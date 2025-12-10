@@ -13,7 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/users")
-@CrossOrigin(origins = "*") // Cho phép Frontend gọi API từ bất kỳ đâu (localhost:3000, v.v.)
+@CrossOrigin(origins = "*")
 public class AdminUserController {
 
     @Autowired
@@ -23,35 +23,50 @@ public class AdminUserController {
     private JwtUtils jwtUtils;
 
     // ==========================================
-    // 1. API ĐĂNG KÝ TÀI KHOẢN ADMIN MỚI
-    // POST: http://localhost:8080/api/admin/users/register
+    // 1. API ĐĂNG KÝ -> TRẢ VỀ LUÔN TOKEN (MỚI)
     // ==========================================
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody AdminUser adminUser) {
         try {
-            // Gọi service để lưu admin mới
+            // 1. Kiểm tra dữ liệu đầu vào
+            if (adminUser.getUsername() == null || adminUser.getUsername().isEmpty()) {
+                return ResponseEntity.badRequest().body("Lỗi: Username không được để trống!");
+            }
+            if (adminUser.getPassword() == null || adminUser.getPassword().isEmpty()) {
+                return ResponseEntity.badRequest().body("Lỗi: Password không được để trống!");
+            }
+
+            // 2. Lưu Admin mới vào Database
             AdminUser newAdmin = adminUserService.createAdmin(adminUser);
-            return ResponseEntity.ok(newAdmin);
+
+            // 3. --- BỔ SUNG: TẠO TOKEN NGAY LẬP TỨC ---
+            String token = jwtUtils.generateToken(newAdmin.getUsername());
+
+            // 4. Trả về Token kèm thông tin (Giống hệt lúc Login)
+            JwtResponse response = new JwtResponse(
+                    token,
+                    newAdmin.getUsername(),
+                    newAdmin.getRole(),
+                    newAdmin.getFullName()
+            );
+            
+            return ResponseEntity.ok(response);
+
         } catch (Exception e) {
-            // Trả về lỗi nếu Username đã tồn tại hoặc lỗi khác
-            return ResponseEntity.badRequest().body("Lỗi: Đăng ký thất bại. Username có thể đã tồn tại.");
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("Đăng ký thất bại: " + e.getMessage());
         }
     }
 
     // ==========================================
-    // 2. API ĐĂNG NHẬP (TRẢ VỀ TOKEN)
-    // POST: http://localhost:8080/api/admin/users/login
+    // 2. API ĐĂNG NHẬP (GIỮ NGUYÊN)
     // ==========================================
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
-        // Bước 1: Kiểm tra username và password
         AdminUser admin = adminUserService.login(loginRequest.getUsername(), loginRequest.getPassword());
 
         if (admin != null) {
-            // Bước 2: Nếu đúng -> Tạo chuỗi Token (JWT)
             String token = jwtUtils.generateToken(admin.getUsername());
-
-            // Bước 3: Đóng gói Token + Thông tin user trả về cho Frontend
             JwtResponse response = new JwtResponse(
                     token,
                     admin.getUsername(),
@@ -60,37 +75,29 @@ public class AdminUserController {
             );
             return ResponseEntity.ok(response);
         } else {
-            // Bước 4: Nếu sai -> Trả về lỗi 401 Unauthorized
-            return ResponseEntity.status(401).body("Đăng nhập thất bại: Sai tài khoản hoặc mật khẩu");
+            return ResponseEntity.status(401).body("Đăng nhập thất bại");
         }
     }
 
     // ==========================================
-    // 3. API LẤY DANH SÁCH ADMIN (QUẢN LÝ)
-    // GET: http://localhost:8080/api/admin/users
+    // 3. CÁC API KHÁC (GIỮ NGUYÊN)
     // ==========================================
     @GetMapping
     public List<AdminUser> getAllAdmins() {
         return adminUserService.getAllAdmins();
     }
 
-    // ==========================================
-    // CÁC CLASS DTO (Data Transfer Object)
-    // Dùng để hứng dữ liệu vào và trả dữ liệu ra
-    // ==========================================
-
-    // Class để hứng dữ liệu JSON khi đăng nhập gửi lên
+    // DTO Classes
     @Data
     static class LoginRequest {
         private String username;
         private String password;
     }
 
-    // Class để định dạng dữ liệu trả về JSON đẹp đẽ cho Frontend
     @Data
     static class JwtResponse {
-        private String token;       // Chuỗi JWT
-        private String type = "Bearer"; // Loại token (chuẩn quốc tế)
+        private String token;
+        private String type = "Bearer";
         private String username;
         private String role;
         private String fullName;
