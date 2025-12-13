@@ -1,36 +1,70 @@
 package com.doan.loyaltyapp.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
-import lombok.Data;
-import com.fasterxml.jackson.annotation.JsonIgnore; // <--- 1. NHỚ IMPORT CÁI NÀY
-
+import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Entity
 @Table(name = "customers")
-@Data
 public class Customer {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String name;
-    
+
     @Column(unique = true)
-    private String email;
-    
     private String phone;
-    
-    private int pointBalance = 0; // Số điểm hiện có
 
-    // 2. Nên đặt giá trị mặc định để không bị null khi mới tạo
-    private String tier = "Mới"; 
+    // Trong ảnh DB có cột email
+    private String email; 
 
-    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
-    @JsonIgnore // <--- 3. QUAN TRỌNG NHẤT: Ngắt vòng lặp vô tận
-    private List<Transaction> transactions;
+    // Mật khẩu (DB không hiện trong ảnh nhưng bắt buộc phải có để login)
+    private String password; 
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt = LocalDateTime.now();
+    // Ánh xạ cột 'point_balance' trong DB
+    @Column(name = "point_balance")
+    // @JsonProperty giúp Frontend vẫn nhận được chữ "points" để không bị lỗi giao diện
+    @JsonProperty("points") 
+    private int pointBalance;
+
+    // Ánh xạ cột 'tier' trong DB
+    @Column(name = "tier")
+    @JsonProperty("rankName") // Giúp Frontend vẫn nhận được chữ "rankName"
+    private String tier;
+
+    // Ánh xạ cột 'created_at' trong DB
+    @Column(name = "created_at", updatable = false)
+    @CreationTimestamp
+    private LocalDateTime createdAt;
+
+    // --- CONSTRUCTORS ---
+    public Customer() {}
+
+    // --- GETTERS & SETTERS ---
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
+
+    public int getPointBalance() { return pointBalance; }
+    public void setPointBalance(int pointBalance) { this.pointBalance = pointBalance; }
+
+    public String getTier() { return tier; }
+    public void setTier(String tier) { this.tier = tier; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

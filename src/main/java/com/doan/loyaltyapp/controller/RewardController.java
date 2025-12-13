@@ -14,18 +14,17 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/rewards")
-@CrossOrigin(origins = "*") // Cho phép Frontend gọi API
+// Đã xóa @CrossOrigin vì SecurityConfig đã xử lý rồi
 public class RewardController {
 
     @Autowired
     private RewardService rewardService;
 
-    // Tiêm Repository này vào để lấy lịch sử đổi quà
     @Autowired
     private RedemptionHistoryRepository redemptionHistoryRepository;
 
     // ==========================================
-    // 1. LẤY DANH SÁCH TẤT CẢ QUÀ
+    // 1. LẤY DANH SÁCH TẤT CẢ QUÀ (User + Admin)
     // GET: http://localhost:8080/api/rewards
     // ==========================================
     @GetMapping
@@ -34,17 +33,26 @@ public class RewardController {
     }
 
     // ==========================================
-    // 2. XEM LỊCH SỬ ĐỔI QUÀ (API MỚI)
+    // 2. LỊCH SỬ ĐỔI QUÀ (Admin - Xem tất cả)
     // GET: http://localhost:8080/api/rewards/history
     // ==========================================
     @GetMapping("/history")
-    public List<RedemptionHistory> getRedemptionHistory() {
-        // Lấy danh sách lịch sử, sắp xếp người đổi mới nhất lên đầu
+    public List<RedemptionHistory> getAllHistory() {
         return redemptionHistoryRepository.findAll(Sort.by(Sort.Direction.DESC, "redeemedAt"));
     }
 
     // ==========================================
-    // 3. THÊM QUÀ MỚI
+    // 3. LỊCH SỬ ĐỔI QUÀ CÁ NHÂN (User - Xem của mình)
+    // GET: http://localhost:8080/api/rewards/history/{customerId}
+    // ==========================================
+    @GetMapping("/history/{customerId}")
+    public List<RedemptionHistory> getUserHistory(@PathVariable Long customerId) {
+        // Cần đảm bảo Repository đã có hàm này (xem lưu ý bên dưới)
+        return redemptionHistoryRepository.findByCustomerIdOrderByRedeemedAtDesc(customerId);
+    }
+
+    // ==========================================
+    // 4. THÊM QUÀ MỚI (Admin)
     // POST: http://localhost:8080/api/rewards
     // ==========================================
     @PostMapping
@@ -53,7 +61,7 @@ public class RewardController {
     }
 
     // ==========================================
-    // 4. SỬA QUÀ
+    // 5. SỬA QUÀ (Admin)
     // PUT: http://localhost:8080/api/rewards/{id}
     // ==========================================
     @PutMapping("/{id}")
@@ -62,7 +70,7 @@ public class RewardController {
     }
 
     // ==========================================
-    // 5. XÓA QUÀ
+    // 6. XÓA QUÀ (Admin)
     // DELETE: http://localhost:8080/api/rewards/{id}
     // ==========================================
     @DeleteMapping("/{id}")
@@ -72,7 +80,7 @@ public class RewardController {
     }
 
     // ==========================================
-    // 6. THỰC HIỆN ĐỔI QUÀ (Redeem)
+    // 7. THỰC HIỆN ĐỔI QUÀ (User)
     // POST: http://localhost:8080/api/rewards/redeem
     // ==========================================
     @PostMapping("/redeem")

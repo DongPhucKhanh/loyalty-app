@@ -8,6 +8,6 @@ import java.util.List;
 
 @Repository
 public interface RedemptionHistoryRepository extends JpaRepository<RedemptionHistory, Long> {
-    // Tìm lịch sử đổi quà của riêng một khách hàng
-    List<RedemptionHistory> findByCustomerId(Long customerId);
+    // Sửa lại tên hàm để tự động sắp xếp ngày giảm dần
+    List<RedemptionHistory> findByCustomerIdOrderByRedeemedAtDesc(Long customerId);
 }
