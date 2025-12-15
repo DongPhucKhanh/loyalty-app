@@ -18,7 +18,6 @@ public class Reward {
     
     // Database của bạn là point_cost, code ánh xạ sang "points" cho Frontend dễ dùng
     @Column(name = "point_cost")
-    @JsonProperty("points") 
     private int pointCost; 
     
     @Column(name = "stock_quantity")

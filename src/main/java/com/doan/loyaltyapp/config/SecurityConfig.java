@@ -48,6 +48,7 @@ public class SecurityConfig {
                 // Mở quyền cho tất cả đường dẫn con của transactions
                 .requestMatchers("/api/transactions/**").permitAll()
                 .requestMatchers("/api/transactions/customer/**").permitAll() // <-- Thêm dòng này để chắc chắn
+                
                 // ---------------------
 
                 // 4. (Tùy chọn cho Dev) Cho phép TẤT CẢ request GET để xem dữ liệu không bị chặn
