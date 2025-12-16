@@ -15,6 +15,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
+import java.util.Collections; // Thêm import này
 
 @Configuration
 @EnableWebSecurity
@@ -28,7 +29,7 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                // 1. Cho phép OPTIONS (CORS)
+                // 1. Cho phép OPTIONS (CORS) - QUAN TRỌNG
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 
                 // 2. Swagger & Auth
@@ -36,23 +37,18 @@ public class SecurityConfig {
                 .requestMatchers("/api/register", "/api/login", "/api/customers/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/customers").permitAll()
 
-                // --- 3. KHU VỰC QUẢN LÝ (FIX LỖI 403) ---
-                // Khai báo rõ ràng từng đường dẫn con để đảm bảo Spring Security hiểu
+                // --- 3. KHU VỰC QUẢN LÝ ---
                 .requestMatchers("/api/tiers/**").permitAll()
                 .requestMatchers("/api/customers/**").permitAll()
                 .requestMatchers("/api/rewards/**").permitAll()
                 .requestMatchers("/api/promotions/**").permitAll()
                 .requestMatchers("/api/admin/**").permitAll()
 
-                // --- SỬA ĐOẠN NÀY ---
-                // Mở quyền cho tất cả đường dẫn con của transactions
+                // --- GIAO DỊCH ---
                 .requestMatchers("/api/transactions/**").permitAll()
-                .requestMatchers("/api/transactions/customer/**").permitAll() // <-- Thêm dòng này để chắc chắn
+                .requestMatchers("/api/transactions/customer/**").permitAll()
                 
-                // ---------------------
-
-                // 4. (Tùy chọn cho Dev) Cho phép TẤT CẢ request GET để xem dữ liệu không bị chặn
-                // Nếu dòng trên vẫn lỗi, dòng này sẽ cứu bạn
+                // 4. Cho phép tất cả request GET (để test)
                 .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
 
                 .anyRequest().authenticated()
@@ -62,15 +58,20 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Bean CorsFilter giữ nguyên...
+    // --- ĐOẠN ĐÃ SỬA LẠI ĐỂ FIX LỖI CORS VERCEL ---
     @Bean
     public FilterRegistrationBean<CorsFilter> corsFilter() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration config = new CorsConfiguration();
+        
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://localhost:5174"));
+        
+        // SỬA: Thay vì setAllowedOrigins cố định, dùng Pattern "*" để chấp nhận tất cả (Vercel + Localhost)
+        config.addAllowedOriginPattern("*"); 
+        
         config.setAllowedHeaders(Arrays.asList("*"));
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        
         source.registerCorsConfiguration("/**", config);
         FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter(source));
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
