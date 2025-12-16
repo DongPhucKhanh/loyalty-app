@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const axiosClient = axios.create({
-  baseURL: 'http://https://loyalty-backend-nftv.onrender.com/api', 
+  baseURL: 'https://loyalty-backend-nftv.onrender.com/api', 
   headers: {
     'Content-Type': 'application/json',
   },
