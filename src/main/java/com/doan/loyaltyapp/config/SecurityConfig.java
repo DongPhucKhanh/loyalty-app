@@ -1,4 +1,4 @@
-package com.doan.loyaltyapp.config;
+package com.doan.loyaltyapp.config; // ⚠️ KIỂM TRA LẠI PACKAGE NẾU CẦN
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -10,8 +10,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder; // <--- MỚI
-import org.springframework.security.crypto.password.PasswordEncoder;     // <--- MỚI
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -27,46 +25,37 @@ public class SecurityConfig {
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
-
-    // --- 1. BEAN MÃ HÓA MẬT KHẨU (BẮT BUỘC PHẢI CÓ) ---
+    // --- 1. BEAN MÃ HÓA MẬT KHẨU ---
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    // --- 2. CẤU HÌNH BẢO MẬT ---
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-
-                // 1. Cho phép OPTIONS (CORS preflight)
-
+                // 1. Cho phép OPTIONS (quan trọng cho CORS)
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // 2. Swagger
+                // 2. Swagger & Public Resources
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
 
-                // 3. Auth / Customer public API
+                // 3. Auth Endpoints
                 .requestMatchers("/api/register", "/api/login", "/api/customers/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/customers").permitAll()
 
-
-                .requestMatchers("/api/tiers/**").permitAll()
-                .requestMatchers("/api/customers/**").permitAll()
-                .requestMatchers("/api/rewards/**").permitAll()
-                .requestMatchers("/api/promotions/**").permitAll()
-                .requestMatchers("/api/admin/**").permitAll()
-
-
-                // --- GIAO DỊCH ---
+                // 4. Mở rộng quyền truy cập để Test (Sau này cần bảo mật thì xóa bớt)
+                .requestMatchers("/api/tiers/**", "/api/rewards/**", "/api/promotions/**").permitAll()
+                .requestMatchers("/api/customers/**", "/api/admin/**").permitAll()
                 .requestMatchers("/api/transactions/**").permitAll()
-                .requestMatchers("/api/transactions/customer/**").permitAll()
-                
-                // 4. Cho phép tất cả request GET (để test)
+
+                // 5. Cho phép tất cả GET để frontend dễ gọi dữ liệu (Test only)
                 .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
 
-                // 6. Các request còn lại cần xác thực
+                // 6. Các request còn lại bắt buộc đăng nhập
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -74,38 +63,32 @@ public class SecurityConfig {
         return http.build();
     }
 
+    // --- 3. CẤU HÌNH CORS (QUAN TRỌNG NHẤT) ---
     @Bean
     public FilterRegistrationBean<CorsFilter> corsFilter() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration config = new CorsConfiguration();
 
-
+        // Cho phép nhận Cookie/Auth header
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(Arrays.asList(
-                "http://localhost:5173",
-                "http://localhost:5174"
-        ));
-        config.setAllowedHeaders(Arrays.asList("*"));
-        config.setAllowedMethods(Arrays.asList(
-                "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"
-        ));
 
+        // Chấp nhận TẤT CẢ các domain (Vercel, Localhost, Render...)
+        // Dùng Pattern "*" thay vì liệt kê từng cái để tránh lỗi thiếu domain
+        config.addAllowedOriginPattern("*");
 
-        
-        config.setAllowCredentials(true);
-        
-        // Dùng Pattern "*" để chấp nhận tất cả domain (Vercel, Localhost...)
-        config.addAllowedOriginPattern("*"); 
-        
+        // Cho phép tất cả Header
         config.setAllowedHeaders(Arrays.asList("*"));
+
+        // Cho phép tất cả các method
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        
+
         source.registerCorsConfiguration("/**", config);
 
-        FilterRegistrationBean<CorsFilter> bean =
-                new FilterRegistrationBean<>(new CorsFilter(source));
+        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter(source));
+        
+        // Đặt độ ưu tiên cao nhất: Chạy filter này TRƯỚC KHI check bảo mật
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
 
         return bean;
     }
-}   
+}
