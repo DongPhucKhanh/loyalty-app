@@ -10,6 +10,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder; // <--- MỚI
+import org.springframework.security.crypto.password.PasswordEncoder;     // <--- MỚI
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -25,14 +27,13 @@ public class SecurityConfig {
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    // =========================
-    // BCrypt Password Encoder
-    // =========================
-   
 
-    // =========================
-    // Security Filter Chain
-    // =========================
+    // --- 1. BEAN MÃ HÓA MẬT KHẨU (BẮT BUỘC PHẢI CÓ) ---
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -40,6 +41,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
 
                 // 1. Cho phép OPTIONS (CORS preflight)
+
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                 // 2. Swagger
@@ -49,15 +51,19 @@ public class SecurityConfig {
                 .requestMatchers("/api/register", "/api/login", "/api/customers/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/customers").permitAll()
 
-                // 4. Mở quyền các API quản lý (theo yêu cầu hiện tại của bạn)
+
                 .requestMatchers("/api/tiers/**").permitAll()
                 .requestMatchers("/api/customers/**").permitAll()
                 .requestMatchers("/api/rewards/**").permitAll()
                 .requestMatchers("/api/promotions/**").permitAll()
                 .requestMatchers("/api/admin/**").permitAll()
-                .requestMatchers("/api/transactions/**").permitAll()
 
-                // 5. Cho phép GET tất cả API (DEV)
+
+                // --- GIAO DỊCH ---
+                .requestMatchers("/api/transactions/**").permitAll()
+                .requestMatchers("/api/transactions/customer/**").permitAll()
+                
+                // 4. Cho phép tất cả request GET (để test)
                 .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
 
                 // 6. Các request còn lại cần xác thực
@@ -68,13 +74,11 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // =========================
-    // CORS Filter
-    // =========================
     @Bean
     public FilterRegistrationBean<CorsFilter> corsFilter() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration config = new CorsConfiguration();
+
 
         config.setAllowCredentials(true);
         config.setAllowedOrigins(Arrays.asList(
@@ -86,6 +90,16 @@ public class SecurityConfig {
                 "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"
         ));
 
+
+        
+        config.setAllowCredentials(true);
+        
+        // Dùng Pattern "*" để chấp nhận tất cả domain (Vercel, Localhost...)
+        config.addAllowedOriginPattern("*"); 
+        
+        config.setAllowedHeaders(Arrays.asList("*"));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        
         source.registerCorsConfiguration("/**", config);
 
         FilterRegistrationBean<CorsFilter> bean =
@@ -94,4 +108,4 @@ public class SecurityConfig {
 
         return bean;
     }
-}
+}   
