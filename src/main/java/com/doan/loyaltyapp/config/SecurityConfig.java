@@ -8,6 +8,8 @@ import org.springframework.core.Ordered;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder; // <--- MỚI
+import org.springframework.security.crypto.password.PasswordEncoder;     // <--- MỚI
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -15,7 +17,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
-import java.util.Collections; // Thêm import này
 
 @Configuration
 @EnableWebSecurity
@@ -23,6 +24,12 @@ public class SecurityConfig {
 
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    // --- 1. BEAN MÃ HÓA MẬT KHẨU (BẮT BUỘC PHẢI CÓ) ---
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -58,7 +65,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // --- ĐOẠN ĐÃ SỬA LẠI ĐỂ FIX LỖI CORS VERCEL ---
+    // --- CẤU HÌNH CORS CHUẨN (CHO PHÉP VERCEL/LOCALHOST) ---
     @Bean
     public FilterRegistrationBean<CorsFilter> corsFilter() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -66,7 +73,7 @@ public class SecurityConfig {
         
         config.setAllowCredentials(true);
         
-        // SỬA: Thay vì setAllowedOrigins cố định, dùng Pattern "*" để chấp nhận tất cả (Vercel + Localhost)
+        // Dùng Pattern "*" để chấp nhận tất cả domain (Vercel, Localhost...)
         config.addAllowedOriginPattern("*"); 
         
         config.setAllowedHeaders(Arrays.asList("*"));
