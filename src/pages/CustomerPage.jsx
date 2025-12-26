@@ -96,7 +96,7 @@ const CustomerPage = () => {
             render: tier => <Tag color={tier === 'Vàng' ? 'gold' : tier === 'Bạc' ? 'cyan' : 'default'}>{tier || 'Mới'}</Tag>
         },
         // SỬA ĐỔI QUAN TRỌNG: dataIndex 'pointBalance' -> 'points'
-        { title: 'Điểm', dataIndex: 'points', key: 'points', render: p => <b style={{color: 'green'}}>{p || 0}</b> },
+        { title: 'Điểm', dataIndex: 'pointBalance', key: 'pointBalance', render: p => <b style={{color: 'green'}}>{p || 0}</b> },
         {
             title: 'Hành động',
             key: 'action',

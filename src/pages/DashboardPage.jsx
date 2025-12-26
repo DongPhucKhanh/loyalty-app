@@ -12,18 +12,12 @@ const { Title, Text } = Typography;
 const DashboardPage = () => {
   const [stats, setStats] = useState({ totalCustomers: 0, totalPoints: 0, revenue: 0 });
   const [topCustomers, setTopCustomers] = useState([]);
-  const [tierData, setTierData] = useState([]);
+  const [tierChartData, setTierChartData] = useState([]);
+  const [tierColors, setTierColors] = useState({}); // State lưu màu sắc lấy từ DB
   const [loading, setLoading] = useState(true);
 
-  // --- MÀU SẮC CHUẨN CHO TỪNG HẠNG ---
-  const TIER_COLORS = {
-    'Mới': '#d9d9d9',       // Xám khói
-    'Bạc': '#40a9ff',       // Xanh dương sáng
-    'Vàng': '#ffec3d',      // Vàng rực
-    'Kim Cương': '#9254de'  // Tím mộng mơ
-  };
-  // Màu mặc định nếu có hạng lạ
-  const DEFAULT_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+  // Màu dự phòng nếu DB chưa có màu hoặc lỗi
+  const DEFAULT_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
   useEffect(() => {
     fetchDashboardData();
@@ -32,14 +26,31 @@ const DashboardPage = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [customersData, transactionsData] = await Promise.all([
+      
+      // 1. GỌI 3 API CÙNG LÚC (Khách hàng, Giao dịch, Hạng thành viên)
+      const [customersData, transactionsData, tiersData] = await Promise.all([
         axiosClient.get('/customers'),
-        axiosClient.get('/transactions')
+        axiosClient.get('/transactions').catch(() => []), // Tránh lỗi nếu chưa có API transaction
+        axiosClient.get('/tiers').catch(() => [])         // Lấy danh sách hạng để lấy màu
       ]);
 
-      // 1. Thống kê
-      const totalPoints = customersData.reduce((sum, cus) => sum + (cus.points || 0), 0);
-      const totalRevenue = transactionsData.reduce((sum, trans) => sum + (trans.totalAmount || 0), 0);
+      // --- XỬ LÝ MÀU SẮC TỪ DB ---
+      // Tạo một object map: { "Vàng": "#ffd700", "Bạc": "#c0c0c0", ... }
+      const colorMap = {};
+      if (Array.isArray(tiersData)) {
+        tiersData.forEach(t => {
+          colorMap[t.name] = t.colorCode || '#1890ff'; // Nếu ko có màu thì lấy xanh mặc định
+        });
+      }
+      setTierColors(colorMap);
+
+      // --- 2. TÍNH TOÁN THỐNG KÊ ---
+      // Sửa lỗi quan trọng: Dùng 'pointBalance' thay vì 'points'
+      const totalPoints = customersData.reduce((sum, cus) => sum + (cus.pointBalance || 0), 0);
+      
+      const totalRevenue = Array.isArray(transactionsData) 
+        ? transactionsData.reduce((sum, trans) => sum + (trans.totalAmount || 0), 0)
+        : 0;
 
       setStats({
         totalCustomers: customersData.length,
@@ -47,17 +58,22 @@ const DashboardPage = () => {
         revenue: totalRevenue
       });
 
-      // 2. Dữ liệu Biểu đồ
+      // --- 3. XỬ LÝ BIỂU ĐỒ TRÒN ---
       const tierCounts = {};
       customersData.forEach(cus => {
-        const tier = cus.tier || 'Mới';
-        tierCounts[tier] = (tierCounts[tier] || 0) + 1;
+        const tierName = cus.tier || 'Mới'; // Nếu null thì gán là 'Mới'
+        tierCounts[tierName] = (tierCounts[tierName] || 0) + 1;
       });
-      const chartData = Object.keys(tierCounts).map(key => ({ name: key, value: tierCounts[key] }));
-      setTierData(chartData);
 
-      // 3. Top 5 VIP
-      const sortedCustomers = [...customersData].sort((a, b) => (b.points || 0) - (a.points || 0));
+      const chartData = Object.keys(tierCounts).map(key => ({ 
+        name: key, 
+        value: tierCounts[key] 
+      }));
+      setTierChartData(chartData);
+
+      // --- 4. TOP 5 KHÁCH HÀNG VIP ---
+      // Sắp xếp theo pointBalance giảm dần
+      const sortedCustomers = [...customersData].sort((a, b) => (b.pointBalance || 0) - (a.pointBalance || 0));
       setTopCustomers(sortedCustomers.slice(0, 5));
 
     } catch (error) {
@@ -67,7 +83,7 @@ const DashboardPage = () => {
     }
   };
 
-  // --- CẤU HÌNH CỘT BẢNG TOP 5 (CÓ ICON CÚP) ---
+  // --- CẤU HÌNH CỘT BẢNG TOP 5 ---
   const columns = [
     {
       title: '#',
@@ -85,9 +101,14 @@ const DashboardPage = () => {
       title: 'Khách hàng',
       dataIndex: 'name',
       key: 'name',
-      render: (text) => (
+      render: (text, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar style={{ backgroundColor: '#fde3cf', color: '#f56a00' }} icon={<UserOutlined />} />
+          {/* Hiện Avatar thật nếu có */}
+          <Avatar 
+            src={record.avatar} 
+            style={{ backgroundColor: '#fde3cf', color: '#f56a00' }} 
+            icon={!record.avatar && <UserOutlined />} 
+          />
           <span style={{ fontWeight: 600, fontSize: 15 }}>{text}</span>
         </div>
       )
@@ -97,18 +118,20 @@ const DashboardPage = () => {
       dataIndex: 'tier',
       key: 'tier',
       align: 'center',
-      render: (tier) => {
-        let color = 'default';
-        if (tier === 'Vàng') color = 'gold';
-        if (tier === 'Kim Cương') color = 'purple';
-        if (tier === 'Bạc') color = 'cyan';
-        return <Tag color={color} style={{ fontWeight: 600 }}>{tier || 'Mới'}</Tag>;
+      render: (tierName) => {
+        // Lấy màu từ State tierColors (Màu động từ DB)
+        const color = tierColors[tierName] || 'default';
+        return (
+          <Tag color={color} style={{ fontWeight: 600, fontSize: 13, padding: '2px 10px' }}>
+            {tierName || 'Mới'}
+          </Tag>
+        );
       }
     },
     {
       title: 'Điểm tích lũy',
-      dataIndex: 'points',
-      key: 'points',
+      dataIndex: 'pointBalance', // <--- QUAN TRỌNG: Đã sửa thành pointBalance
+      key: 'pointBalance',
       align: 'right',
       render: (val) => <b style={{ color: '#389e0d', fontSize: 16 }}>{(val || 0).toLocaleString()}</b>
     }
@@ -123,9 +146,8 @@ const DashboardPage = () => {
         <Text type="secondary">Cập nhật số liệu kinh doanh mới nhất hôm nay</Text>
       </div>
 
-      {/* --- PHẦN 1: 3 THẺ THỐNG KÊ (GRADIENT) --- */}
+      {/* --- PHẦN 1: 3 THẺ THỐNG KÊ --- */}
       <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
-        {/* Thẻ Khách hàng (Xanh dương) */}
         <Col xs={24} sm={8}>
           <Card bordered={false} bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, background: 'linear-gradient(135deg, #36D1DC 0%, #5B86E5 100%)', boxShadow: '0 10px 20px rgba(54, 209, 220, 0.3)' }}>
             <Statistic 
@@ -137,7 +159,6 @@ const DashboardPage = () => {
           </Card>
         </Col>
 
-        {/* Thẻ Điểm (Cam vàng) */}
         <Col xs={24} sm={8}>
           <Card bordered={false} bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, background: 'linear-gradient(135deg, #FF9966 0%, #FF5E62 100%)', boxShadow: '0 10px 20px rgba(255, 94, 98, 0.3)' }}>
             <Statistic 
@@ -149,7 +170,6 @@ const DashboardPage = () => {
           </Card>
         </Col>
 
-        {/* Thẻ Doanh thu (Xanh lá) */}
         <Col xs={24} sm={8}>
           <Card bordered={false} bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, background: 'linear-gradient(135deg, #56ab2f 0%, #a8e063 100%)', boxShadow: '0 10px 20px rgba(86, 171, 47, 0.3)' }}>
             <Statistic 
@@ -166,7 +186,7 @@ const DashboardPage = () => {
 
       {/* --- PHẦN 2: BIỂU ĐỒ VÀ BẢNG --- */}
       <Row gutter={[24, 24]}>
-        {/* Biểu đồ tròn */}
+        {/* Biểu đồ tròn (Màu sắc động theo DB) */}
         <Col xs={24} lg={10}>
           <Card 
             title={<><RiseOutlined /> <span style={{ marginLeft: 8 }}>Phân bố Hạng thành viên</span></>}
@@ -177,20 +197,24 @@ const DashboardPage = () => {
               <ResponsiveContainer>
                 <PieChart>
                   <Pie
-                    data={tierData}
+                    data={tierChartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={70} // Tạo biểu đồ Doughnut rỗng ruột nhìn sang hơn
+                    innerRadius={70}
                     outerRadius={100}
                     paddingAngle={5}
                     dataKey="value"
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   >
-                    {tierData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={TIER_COLORS[entry.name] || DEFAULT_COLORS[index % DEFAULT_COLORS.length]} />
+                    {tierChartData.map((entry, index) => (
+                      // Ưu tiên màu từ DB (tierColors), nếu không có thì dùng màu mặc định
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={tierColors[entry.name] || DEFAULT_COLORS[index % DEFAULT_COLORS.length]} 
+                      />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => `${value} khách`} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Tooltip formatter={(value) => `${value} khách`} contentStyle={{ borderRadius: 8 }} />
                   <Legend verticalAlign="bottom" height={36} iconType="circle"/>
                 </PieChart>
               </ResponsiveContainer>
@@ -211,7 +235,6 @@ const DashboardPage = () => {
               rowKey="id" 
               pagination={false} 
               size="middle"
-              className="vip-table"
             />
           </Card>
         </Col>
