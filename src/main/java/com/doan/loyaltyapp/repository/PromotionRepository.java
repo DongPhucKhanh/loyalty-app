@@ -10,8 +10,12 @@ import java.util.List;
 
 @Repository
 public interface PromotionRepository extends JpaRepository<Promotion, Long> {
-    
-    // Tìm các sự kiện đang hoạt động và trong thời gian hiệu lực
-    @Query("SELECT p FROM Promotion p WHERE p.active = true AND :today BETWEEN p.startDate AND p.endDate")
+
+    /**
+     * Tìm tất cả khuyến mãi đang có hiệu lực trong ngày hôm nay.
+     * Logic: Ngày hôm nay phải LỚN HƠN HOẶC BẰNG ngày bắt đầu 
+     * VÀ NHỎ HƠN HOẶC BẰNG ngày kết thúc.
+     */
+    @Query("SELECT p FROM Promotion p WHERE :today >= p.startDate AND :today <= p.endDate")
     List<Promotion> findActivePromotions(LocalDate today);
 }

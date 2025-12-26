@@ -1,8 +1,7 @@
 package com.doan.loyaltyapp.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
+import java.time.LocalDate; // <--- Import này bắt buộc để dùng ngày tháng
 import java.time.LocalDateTime;
 
 @Entity
@@ -15,35 +14,27 @@ public class Customer {
 
     private String name;
 
-    @Column(unique = true)
+    @Column(unique = true, nullable = false)
     private String phone;
 
-    // Trong ảnh DB có cột email
-    private String email; 
+    private String email;
+    private String password;
+    private String address; // Địa chỉ
 
-    // Mật khẩu (DB không hiện trong ảnh nhưng bắt buộc phải có để login)
-    private String password; 
+    private Integer pointBalance = 0;
+    private String tier = "Mới";
 
-    // Ánh xạ cột 'point_balance' trong DB
-    @Column(name = "point_balance")
-    // @JsonProperty giúp Frontend vẫn nhận được chữ "points" để không bị lỗi giao diện
-    @JsonProperty("points") 
-    private int pointBalance;
+    // --- CÁC TRƯỜNG MỚI ---
+    private String gender;  // Giới tính
+    private LocalDate dob;  // Ngày sinh
+    private String avatar;  // Ảnh đại diện
+    private String status;  // Trạng thái (ACTIVE/LOCKED)
 
-    // Ánh xạ cột 'tier' trong DB
-    @Column(name = "tier")
-    @JsonProperty("rankName") // Giúp Frontend vẫn nhận được chữ "rankName"
-    private String tier;
-
-    // Ánh xạ cột 'created_at' trong DB
     @Column(name = "created_at", updatable = false)
-    @CreationTimestamp
-    private LocalDateTime createdAt;
+    private LocalDateTime createdAt = LocalDateTime.now();
 
-    // --- CONSTRUCTORS ---
-    public Customer() {}
+    // --- GETTER & SETTER (Đầy đủ cho tất cả các trường) ---
 
-    // --- GETTERS & SETTERS ---
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -59,11 +50,26 @@ public class Customer {
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
 
-    public int getPointBalance() { return pointBalance; }
-    public void setPointBalance(int pointBalance) { this.pointBalance = pointBalance; }
+    public String getAddress() { return address; }
+    public void setAddress(String address) { this.address = address; }
+
+    public Integer getPointBalance() { return pointBalance; }
+    public void setPointBalance(Integer pointBalance) { this.pointBalance = pointBalance; }
 
     public String getTier() { return tier; }
     public void setTier(String tier) { this.tier = tier; }
+
+    public String getGender() { return gender; }
+    public void setGender(String gender) { this.gender = gender; }
+
+    public LocalDate getDob() { return dob; }
+    public void setDob(LocalDate dob) { this.dob = dob; }
+
+    public String getAvatar() { return avatar; }
+    public void setAvatar(String avatar) { this.avatar = avatar; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

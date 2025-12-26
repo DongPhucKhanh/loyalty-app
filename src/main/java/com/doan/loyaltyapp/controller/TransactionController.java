@@ -1,22 +1,23 @@
 package com.doan.loyaltyapp.controller;
 
 import com.doan.loyaltyapp.model.Customer;
+import com.doan.loyaltyapp.model.Promotion; // <--- 1. Import Promotion
 import com.doan.loyaltyapp.model.Transaction;
 import com.doan.loyaltyapp.repository.CustomerRepository;
+import com.doan.loyaltyapp.repository.PromotionRepository; // <--- 2. Import Repo
 import com.doan.loyaltyapp.repository.TransactionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate; // <--- 3. Import LocalDate
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/transactions")
-@CrossOrigin(origins = "*") // <--- 1. QUAN TRỌNG: Sửa lỗi 403 Forbidden
+@CrossOrigin(origins = "*") 
 public class TransactionController {
 
     @Autowired
@@ -24,6 +25,9 @@ public class TransactionController {
 
     @Autowired
     private CustomerRepository customerRepository;
+
+    @Autowired
+    private PromotionRepository promotionRepository; // <--- 4. Tiêm (Inject) Repository Khuyến mãi
 
     // 1. Lấy TOÀN BỘ danh sách giao dịch
     @GetMapping
@@ -37,43 +41,65 @@ public class TransactionController {
         return transactionRepository.findByCustomerIdOrderByTransactionDateDesc(customerId);
     }
 
-    // 3. API CỘNG ĐIỂM (Đã sửa để khớp với Frontend)
-    // Frontend gửi dạng: /add-points?customerId=1&amount=500000
+    // 3. API CỘNG ĐIỂM (LOGIC MỚI: CÓ TÍNH KHUYẾN MÃI)
     @PostMapping("/add-points")
     public ResponseEntity<?> addPoints(
-            @RequestParam Long customerId,  // <--- 2. Sửa @RequestBody thành @RequestParam
-            @RequestParam Double amount     // <--- 2. Nhận trực tiếp biến amount
+            @RequestParam Long customerId,
+            @RequestParam Double amount
     ) {
         try {
-            // Tìm khách hàng
+            // A. Tìm khách hàng
             Customer customer = customerRepository.findById(customerId)
                     .orElseThrow(() -> new RuntimeException("Khách hàng không tồn tại!"));
 
-            // Tính điểm: 10.000 VNĐ = 1 điểm (Theo logic hiển thị ở Frontend)
-            // Hoặc 1.000 VNĐ = 1 điểm tùy bạn quy định. Ở đây mình để 10.000 theo ảnh bạn gửi
-            int pointsEarned = (int) (amount / 10000); 
+            // B. Tính điểm gốc (10.000 VNĐ = 1 điểm)
+            int basePoints = (int) (amount / 10000); 
 
-            // Lưu giao dịch
+            // C. --- KIỂM TRA KHUYẾN MÃI (LOGIC MỚI) ---
+            double multiplier = 1.0; // Hệ số mặc định là 1 (không nhân)
+            String promoName = "";
+
+            // Gọi Repo để tìm xem hôm nay có sự kiện nào đang chạy không
+            List<Promotion> activePromotions = promotionRepository.findActivePromotions(LocalDate.now());
+            
+            if (!activePromotions.isEmpty()) {
+                // Lấy khuyến mãi đầu tiên tìm được
+                Promotion promo = activePromotions.get(0);
+                multiplier = promo.getMultiplier(); // Lấy hệ số nhân (ví dụ 1.5)
+                promoName = promo.getName();
+                
+                System.out.println("DEBUG: Áp dụng khuyến mãi: " + promoName + " | Hệ số: x" + multiplier);
+            }
+
+            // D. Tính điểm thực nhận (Làm tròn xuống)
+            int finalPoints = (int) (basePoints * multiplier);
+
+            // E. Lưu giao dịch
             Transaction transaction = new Transaction();
             transaction.setCustomer(customer);
             transaction.setTotalAmount(amount);
-            transaction.setPointsEarned(pointsEarned);
+            transaction.setPointsEarned(finalPoints); // Lưu điểm đã nhân hệ số
             transaction.setPointsUsed(0);
-            transaction.setType("EARN"); // Mặc định là tích điểm
+            transaction.setType("EARN"); 
             transaction.setTransactionDate(LocalDateTime.now());
+            
+            // (Tùy chọn) Lưu tên khuyến mãi vào ghi chú nếu cần
+            if(multiplier > 1.0) {
+                // transaction.setNote("Áp dụng KM: " + promoName); 
+            }
             
             transactionRepository.save(transaction);
 
-            // Cập nhật ví và hạng thành viên
-            int newBalance = customer.getPointBalance() + pointsEarned;
+            // F. Cập nhật ví và hạng thành viên
+            int newBalance = customer.getPointBalance() + finalPoints;
             customer.setPointBalance(newBalance);
 
-            // Logic thăng hạng (Tự động cập nhật hạng dựa trên tổng điểm)
-            // updateCustomerTier(customer, newBalance);
+            // Logic thăng hạng (nếu có)
+            updateCustomerTier(customer, newBalance);
 
             customerRepository.save(customer);
 
-            return ResponseEntity.ok("Cộng điểm thành công! Khách nhận được " + pointsEarned + " điểm.");
+            return ResponseEntity.ok("Thành công! Điểm gốc: " + basePoints + ". Điểm nhận được (x" + multiplier + "): " + finalPoints + " điểm.");
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -81,11 +107,11 @@ public class TransactionController {
         }
     }
 
-    // Hàm phụ: Cập nhật hạng thành viên
-    // private void updateCustomerTier(Customer customer, int balance) {
-    //     if (balance >= 10000) customer.setTier("Kim Cương");
-    //     else if (balance >= 5000) customer.setTier("Vàng");
-    //     else if (balance >= 2000) customer.setTier("Bạc");
-    //     else if (balance < 2000) customer.setTier("Mới"); // Reset về Mới nếu điểm thấp
-    // }
+    // Hàm phụ: Tự động thăng hạng (Dựa vào tổng điểm)
+    private void updateCustomerTier(Customer customer, int balance) {
+        if (balance >= 10000) customer.setTier("Kim Cương");
+        else if (balance >= 5000) customer.setTier("Vàng");
+        else if (balance >= 2000) customer.setTier("Bạc");
+        else customer.setTier("Mới");
+    }
 }
