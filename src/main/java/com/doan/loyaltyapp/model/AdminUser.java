@@ -14,8 +14,9 @@ public class AdminUser {
     @Column(unique = true, nullable = false)
     private String username;
 
-    @Column(nullable = false)
-    private String password; // Trong thực tế nên mã hóa (BCrypt), ở đây demo lưu plain text
+    // SỬA DÒNG NÀY: Thêm length = 255 để chứa thoải mái mã hóa BCrypt
+    @Column(nullable = false, length = 255) 
+    private String password; 
 
     private String fullName;
     
