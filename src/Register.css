@@ -1,0 +1,80 @@
+/* Register.css */
+
+/* 1. Khung bao quanh form (Container) */
+.register-container {
+  max-width: 500px; /* Độ rộng tối đa */
+  margin: 50px auto; /* Căn giữa màn hình */
+  padding: 30px;
+  background-color: #ffffff; /* Nền trắng */
+  border-radius: 12px; /* Bo tròn góc */
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15); /* Đổ bóng cho nổi */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* 2. Tiêu đề form */
+.register-title {
+  text-align: center;
+  color: #333;
+  margin-bottom: 30px;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+/* 3. Từng nhóm ô nhập (Label + Input) */
+.form-group {
+  margin-bottom: 20px; /* Khoảng cách giữa các ô */
+}
+
+.form-label {
+  display: block; /* Để nhãn nằm trên ô nhập */
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #444;
+}
+
+/* 4. Ô nhập liệu (Input & Select) */
+.form-input {
+  width: 100%;
+  padding: 12px 15px;
+  font-size: 16px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-sizing: border-box; /* Đảm bảo padding không làm vỡ khung */
+  transition: all 0.3s ease;
+}
+
+.form-input:focus {
+  border-color: #0d6efd; /* Đổi màu viền khi bấm vào */
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+}
+
+/* 5. Nút đăng ký */
+.btn-submit {
+  width: 100%;
+  padding: 14px;
+  background-color: #0d6efd; /* Màu xanh dương hiện đại */
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: background-color 0.3s;
+}
+
+.btn-submit:hover {
+  background-color: #0b5ed7; /* Màu đậm hơn khi di chuột */
+}
+
+/* 6. Thông báo lỗi */
+.alert-error {
+  background-color: #fee2e2;
+  color: #dc2626;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  text-align: center;
+  border: 1px solid #fca5a5;
+}
