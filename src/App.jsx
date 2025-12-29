@@ -1,37 +1,66 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import MainLayout from './components/MainLayout';
 import LoginPage from './pages/LoginPage';
+
+// Import các trang
 import DashboardPage from './pages/DashboardPage';
 import CustomerPage from './pages/CustomerPage';
-import MainLayout from './components/MainLayout'; // Import Layout mới
-import RewardPage from './pages/RewardPage';
+import EmployeePage from './pages/EmployeePage';
 import TransactionPage from './pages/TransactionPage';
 import RedemptionPage from './pages/RedemptionPage';
-import TierPage from './pages/TierPage'; // Import
+import RewardPage from './pages/RewardPage';
+import TierPage from './pages/TierPage';
 import PromotionPage from './pages/PromotionPage';
+import AuditLogPage from './pages/AuditLogPage';
+
+// --- 1. COMPONENT BẢO VỆ: ĐĂNG NHẬP MỚI ĐƯỢC VÀO ---
+// Sửa đổi: Kiểm tra 'user_info' thay vì 'access_token' để tránh lỗi khi chưa có token
 const PrivateRoute = ({ children }) => {
-    const token = localStorage.getItem('access_token');
-    return token ? children : <Navigate to="/" />;
+    const user = localStorage.getItem('user_info');
+    return user ? children : <Navigate to="/" replace />;
+};
+
+// --- 2. COMPONENT BẢO VỆ: CHỈ ADMIN MỚI ĐƯỢC VÀO ---
+const AdminRoute = ({ children }) => {
+    const userString = localStorage.getItem('user_info');
+    const user = userString ? JSON.parse(userString) : null;
+
+    // Nếu không phải ADMIN, đá về trang bán hàng của nhân viên
+    if (user && user.role !== 'ADMIN') {
+        return <Navigate to="/customers" replace />;
+    }
+    return children;
 };
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Trang Login (Mặc định) */}
         <Route path="/" element={<LoginPage />} />
-        
-        {/* BỌC CÁC TRANG ADMIN TRONG MAINLAYOUT */}
+
+        {/* Bọc toàn bộ các trang nội bộ trong Layout & PrivateRoute */}
         <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>
-            <Route path="/dashboard" element={<DashboardPage />} />
+            
+            {/* --- NHÓM 1: TRANG CHUNG (Admin & Staff đều vào được) --- */}
             <Route path="/customers" element={<CustomerPage />} />
-            <Route path="/rewards" element={<RewardPage />} /> {/* Thêm dòng này */}
             <Route path="/transactions" element={<TransactionPage />} />
             <Route path="/redemptions" element={<RedemptionPage />} />
-            <Route path="/tiers" element={<TierPage />} />
-            <Route path="/promotions" element={<PromotionPage />} />
+
+            {/* --- NHÓM 2: TRANG QUẢN TRỊ (Chỉ Admin vào được) --- */}
+            {/* Nếu Staff cố tình gõ link này sẽ bị đá về /customers */}
+            <Route path="/dashboard" element={<AdminRoute><DashboardPage /></AdminRoute>} />
+            <Route path="/employees" element={<AdminRoute><EmployeePage /></AdminRoute>} />
+            <Route path="/rewards" element={<AdminRoute><RewardPage /></AdminRoute>} />
+            <Route path="/tiers" element={<AdminRoute><TierPage /></AdminRoute>} />
+            <Route path="/promotions" element={<AdminRoute><PromotionPage /></AdminRoute>} />
+            <Route path="/audit-logs" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
+            
         </Route>
-        
-        <Route path="*" element={<Navigate to="/" />} />
+
+        {/* Nếu đường dẫn sai -> Về trang Login */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

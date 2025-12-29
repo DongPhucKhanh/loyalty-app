@@ -10,29 +10,47 @@ const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-    const onFinish = async (values) => {
+   const onFinish = async (values) => {
         setLoading(true);
         try {
-            // Gọi API Login
-            const response = await axiosClient.post('/admin/users/login', values);
+            const response = await axiosClient.post('/auth/login', values);
             
-            // Backend trả về: { token: "...", fullName: "...", role: "..." }
+            // --- IN RA MÀN HÌNH CONSOLE ĐỂ KIỂM TRA ---
+            console.log("DỮ LIỆU BACKEND TRẢ VỀ:", response); 
+
+            // Kiểm tra xem dữ liệu nằm ở 'response' hay 'response.data'
+            // Một số cấu hình axios sẽ trả về trực tiếp data, một số trả về full response
+            const data = response.data ? response.data : response;
+
+            if (!data || !data.role) {
+                message.error("Lỗi: Backend không trả về Role!");
+                console.error("Thiếu role trong data:", data);
+                return;
+            }
+
             message.success('Đăng nhập thành công!');
             
-            // Lưu dữ liệu quan trọng vào trình duyệt
-            localStorage.setItem('access_token', response.token);
-            localStorage.setItem('user_info', JSON.stringify({
-                fullName: response.fullName,
-                role: response.role,
-                username: response.username
-            }));
+            // Lưu vào localStorage
+            localStorage.setItem('access_token', data.token || ''); // Lưu token nếu có
+            localStorage.setItem('user_info', JSON.stringify(data));
 
-            // Chuyển sang trang Dashboard
-            navigate('/dashboard');
+            // --- PHÂN LUỒNG ---
+            // Thêm độ trễ nhỏ 0.5s để đảm bảo localStorage kịp lưu
+            setTimeout(() => {
+                if (data.role === 'ADMIN') {
+                    console.log("Đang chuyển hướng đến Dashboard...");
+                    navigate('/dashboard'); 
+                } else if (data.role === 'STAFF') {
+                    console.log("Đang chuyển hướng đến Khách hàng...");
+                    navigate('/customers'); 
+                } else {
+                    message.warning("Tài khoản không có quyền truy cập!");
+                }
+            }, 500);
 
         } catch (error) {
-            console.error("Login Error:", error);
-            message.error('Đăng nhập thất bại! Kiểm tra lại tài khoản.');
+            console.error("Lỗi đăng nhập:", error);
+            message.error('Đăng nhập thất bại!');
         } finally {
             setLoading(false);
         }
@@ -48,8 +66,8 @@ const LoginPage = () => {
         }}>
             <Card style={{ width: 400, borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <Title level={2} style={{ margin: 0 }}>Admin Panel</Title>
-                    <Text type="secondary">Đăng nhập hệ thống Loyalty</Text>
+                    <Title level={2} style={{ margin: 0 }}>Hệ thống Loyalty</Title>
+                    <Text type="secondary">Đăng nhập để làm việc</Text>
                 </div>
 
                 <Form
