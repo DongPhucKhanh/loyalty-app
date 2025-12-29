@@ -1,4 +1,4 @@
-package com.doan.loyaltyapp.config; // ⚠️ KIỂM TRA LẠI PACKAGE NẾU CẦN
+package com.doan.loyaltyapp.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -43,19 +43,29 @@ public class SecurityConfig {
                 // 2. Swagger & Public Resources
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
 
-                // 3. Auth Endpoints
+                // 3. --- QUAN TRỌNG: MỞ CỬA CHO LOGIN & NHÂN VIÊN ---
+                // Cho phép vào trang đăng nhập mới
+                .requestMatchers("/api/auth/**").permitAll() 
+                
+                // Cho phép quản lý nhân viên (để Admin tạo user, hoặc test)
+                .requestMatchers("/api/employees/**").permitAll()
+                
+                // Cho phép quản lý Admin (nếu cần)
+                .requestMatchers("/api/admin-users/**").permitAll()
+
+                // 4. Auth Endpoints cũ (Giữ lại nếu App Mobile còn dùng)
                 .requestMatchers("/api/register", "/api/login", "/api/customers/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/customers").permitAll()
 
-                // 4. Mở rộng quyền truy cập để Test (Sau này cần bảo mật thì xóa bớt)
+                // 5. Mở rộng quyền truy cập để Test
                 .requestMatchers("/api/tiers/**", "/api/rewards/**", "/api/promotions/**").permitAll()
                 .requestMatchers("/api/customers/**", "/api/admin/**").permitAll()
                 .requestMatchers("/api/transactions/**").permitAll()
 
-                // 5. Cho phép tất cả GET để frontend dễ gọi dữ liệu (Test only)
+                // 6. Cho phép tất cả GET để frontend dễ gọi dữ liệu (Test only)
                 .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
 
-                // 6. Các request còn lại bắt buộc đăng nhập
+                // 7. Các request còn lại bắt buộc đăng nhập
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -63,30 +73,20 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // --- 3. CẤU HÌNH CORS (QUAN TRỌNG NHẤT) ---
+    // --- 3. CẤU HÌNH CORS (GIỮ NGUYÊN) ---
     @Bean
     public FilterRegistrationBean<CorsFilter> corsFilter() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration config = new CorsConfiguration();
 
-        // Cho phép nhận Cookie/Auth header
         config.setAllowCredentials(true);
-
-        // Chấp nhận TẤT CẢ các domain (Vercel, Localhost, Render...)
-        // Dùng Pattern "*" thay vì liệt kê từng cái để tránh lỗi thiếu domain
         config.addAllowedOriginPattern("*");
-
-        // Cho phép tất cả Header
         config.setAllowedHeaders(Arrays.asList("*"));
-
-        // Cho phép tất cả các method
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 
         source.registerCorsConfiguration("/**", config);
 
         FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter(source));
-        
-        // Đặt độ ưu tiên cao nhất: Chạy filter này TRƯỚC KHI check bảo mật
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
 
         return bean;

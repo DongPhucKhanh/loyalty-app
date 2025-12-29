@@ -2,6 +2,7 @@ package com.doan.loyaltyapp.controller;
 
 import com.doan.loyaltyapp.model.Customer;
 import com.doan.loyaltyapp.repository.CustomerRepository;
+import com.doan.loyaltyapp.service.AuditLogService;
 import com.doan.loyaltyapp.utils.JwtUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -16,7 +17,8 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/api/customers")
 // Cấu hình CORS: Chấp nhận Localhost và Vercel
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:5174", "https://loyalty-client-lilac.vercel.app"}, allowCredentials = "true")
+@CrossOrigin(origins = { "http://localhost:5173", "http://localhost:5174",
+        "https://loyalty-client-lilac.vercel.app" }, allowCredentials = "true")
 public class CustomerController {
 
     @Autowired
@@ -27,6 +29,9 @@ public class CustomerController {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private AuditLogService auditLogService;
 
     // Lấy danh sách khách hàng
     @GetMapping
@@ -55,9 +60,11 @@ public class CustomerController {
         customer.setPassword(passwordEncoder.encode(customer.getPassword()));
 
         // 3. Xử lý dữ liệu mặc định cho người dùng mới
-        if (customer.getPointBalance() == 0) customer.setPointBalance(0);
-        if (customer.getTier() == null) customer.setTier("Mới");
-        
+        if (customer.getPointBalance() == 0)
+            customer.setPointBalance(0);
+        if (customer.getTier() == null)
+            customer.setTier("Mới");
+
         // Mới: Mặc định trạng thái là ACTIVE (Hoạt động)
         if (customer.getStatus() == null || customer.getStatus().isEmpty()) {
             customer.setStatus("ACTIVE");
@@ -105,7 +112,7 @@ public class CustomerController {
 
         // 4. Tạo Token và trả về thông tin
         String token = jwtUtils.generateToken(customer.getPhone());
-        
+
         Map<String, Object> response = new HashMap<>();
         response.put("token", token);
         response.put("id", customer.getId());
@@ -132,12 +139,16 @@ public class CustomerController {
         existingCustomer.setPhone(customerDetails.getPhone());
         existingCustomer.setEmail(customerDetails.getEmail());
         existingCustomer.setAddress(customerDetails.getAddress()); // Địa chỉ
-        
+
         // Cập nhật các trường mới
-        if (customerDetails.getGender() != null) existingCustomer.setGender(customerDetails.getGender());
-        if (customerDetails.getDob() != null) existingCustomer.setDob(customerDetails.getDob());
-        if (customerDetails.getAvatar() != null) existingCustomer.setAvatar(customerDetails.getAvatar());
-        if (customerDetails.getStatus() != null) existingCustomer.setStatus(customerDetails.getStatus());
+        if (customerDetails.getGender() != null)
+            existingCustomer.setGender(customerDetails.getGender());
+        if (customerDetails.getDob() != null)
+            existingCustomer.setDob(customerDetails.getDob());
+        if (customerDetails.getAvatar() != null)
+            existingCustomer.setAvatar(customerDetails.getAvatar());
+        if (customerDetails.getStatus() != null)
+            existingCustomer.setStatus(customerDetails.getStatus());
 
         // Chỉ mã hóa lại nếu người dùng nhập mật khẩu MỚI
         if (customerDetails.getPassword() != null && !customerDetails.getPassword().isEmpty()) {
@@ -151,18 +162,27 @@ public class CustomerController {
     // Xóa khách hàng
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteCustomer(@PathVariable Long id) {
-        if (!customerRepository.existsById(id)) return ResponseEntity.notFound().build();
+        if (!customerRepository.existsById(id))
+            return ResponseEntity.notFound().build();
+        // Lấy thông tin khách trước khi xóa để lưu log
+        Customer cus = customerRepository.findById(id).get();
         customerRepository.deleteById(id);
+        // --- GHI LOG ---
+        // "who": Tạm thời để 'Admin' hoặc lấy từ Token nếu có
+        auditLogService.saveLog("Admin", "XÓA KHÁCH HÀNG",
+                "Đã xóa khách: " + cus.getName() + " - SĐT: " + cus.getPhone());
+
         return ResponseEntity.ok().build();
     }
+
     @GetMapping("/{id}")
-public ResponseEntity<?> getCustomerById(@PathVariable Long id) {
-    Optional<Customer> customer = customerRepository.findById(id);
-    if (customer.isPresent()) {
-        return ResponseEntity.ok(customer.get());
-    } else {
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<?> getCustomerById(@PathVariable Long id) {
+        Optional<Customer> customer = customerRepository.findById(id);
+        if (customer.isPresent()) {
+            return ResponseEntity.ok(customer.get());
+        } else {
+            return ResponseEntity.notFound().build();
+        }
     }
-}
-    
+
 }
