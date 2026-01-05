@@ -1,8 +1,6 @@
 package com.doan.loyaltyapp.config;
 
-import com.doan.loyaltyapp.model.Customer;
-import com.doan.loyaltyapp.repository.CustomerRepository;
-import com.doan.loyaltyapp.utils.JwtUtils;
+import com.doan.loyaltyapp.utils.JwtUtils; // Đảm bảo import đúng
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,14 +8,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
-import java.util.Optional;
+import java.util.ArrayList;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -25,79 +21,48 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private JwtUtils jwtUtils;
 
-    @Autowired
-    private CustomerRepository customerRepository;
+    // ❌ ĐÃ XÓA: private CustomerRepository customerRepository;
+    // Lý do: Không cần tra DB ở đây, chỉ cần Token hợp lệ là đủ để lấy tên.
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        String requestPath = request.getRequestURI();
-        String requestMethod = request.getMethod();
-
-        // 1. Cho phép request OPTIONS (CORS pre-flight) đi qua
-        if (requestMethod.equalsIgnoreCase("OPTIONS")) {
-             filterChain.doFilter(request, response);
-             return;
-        }
-
-        // 2. DANH SÁCH API CÔNG KHAI (KHÔNG CẦN TOKEN)
-        // Chỉ bao gồm Đăng nhập và Đăng ký.
-        // Tuyệt đối KHÔNG thêm "/api/user" vào đây.
-        boolean isPublicEndpoint = 
-            requestPath.equals("/api/login") ||             
-            requestPath.equals("/api/register") ||
-            requestPath.equals("/api/customers/login"); // API đăng nhập mới
-
-        // Nếu là API công khai, cho qua luôn không cần check token
-        if (isPublicEndpoint) {
-            filterChain.doFilter(request, response);
-            return; 
-        }
-
-        // -----------------------------------------------------------------
-        // 3. XỬ LÝ TOKEN (Cho các request còn lại như /api/user/profile-summary)
-        // -----------------------------------------------------------------
-        
+        // 1. Lấy Token từ Header gửi lên
         String authHeader = request.getHeader("Authorization");
         String token = null;
-        String phone = null; // Username trong hệ thống của bạn là Số điện thoại
+        String username = null;
 
+        // Header phải có dạng "Bearer eyJhbGci..."
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             token = authHeader.substring(7); // Cắt bỏ chữ "Bearer "
             try {
-                phone = jwtUtils.extractUsername(token);
+                username = jwtUtils.extractUsername(token); // Lấy tên user (NV06, Admin, hoặc SĐT khách)
             } catch (Exception e) {
-                System.out.println("Lỗi Token: " + e.getMessage());
+                logger.error("Lỗi trích xuất Token: " + e.getMessage());
             }
         }
 
-        // 4. Xác thực và lưu vào SecurityContext
-        if (phone != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            // Tìm Customer trong DB bằng số điện thoại
-            Optional<Customer> customerOptional = customerRepository.findByPhone(phone);
-
-            if (customerOptional.isPresent()) {
-                Customer customer = customerOptional.get();
-
-                // Kiểm tra hạn sử dụng của Token
-                if (jwtUtils.validateToken(token, customer.getPhone())) {
-                    
-                    // Tạo đối tượng xác thực
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            customer, 
-                            null, 
-                            Collections.singletonList(new SimpleGrantedAuthority("ROLE_CUSTOMER")) // Gán quyền mặc định
-                    );
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                    // Đóng dấu "Đã xác thực" vào hệ thống Spring Security
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                }
+        // 2. Nếu có username và chưa được xác thực
+        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            
+            // Kiểm tra Token còn hạn không và có khớp username không
+            if (jwtUtils.validateToken(token, username)) {
+                
+                // 3. --- THIẾT LẬP DANH TÍNH (QUAN TRỌNG NHẤT) ---
+                // Đoạn này báo cho Spring Boot biết: "Đây là NV06, cho phép đi qua!"
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        username, null, new ArrayList<>() 
+                );
+                
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                
+                // Gán vào hệ thống bảo mật
+                SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         }
 
-        // Cho phép request đi tiếp đến Controller
+        // Cho phép đi tiếp
         filterChain.doFilter(request, response);
     }
 }

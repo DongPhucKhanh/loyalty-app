@@ -1,20 +1,26 @@
 package com.doan.loyaltyapp.controller;
 
+import com.doan.loyaltyapp.model.Customer;
 import com.doan.loyaltyapp.model.RedemptionHistory;
 import com.doan.loyaltyapp.model.Reward;
+import com.doan.loyaltyapp.model.Tier;
+import com.doan.loyaltyapp.repository.CustomerRepository;
 import com.doan.loyaltyapp.repository.RedemptionHistoryRepository;
+import com.doan.loyaltyapp.repository.TierRepository;
+import com.doan.loyaltyapp.service.AuditLogService;
 import com.doan.loyaltyapp.service.RewardService;
 import lombok.Data;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/rewards")
-// Đã xóa @CrossOrigin vì SecurityConfig đã xử lý rồi
 public class RewardController {
 
     @Autowired
@@ -23,9 +29,17 @@ public class RewardController {
     @Autowired
     private RedemptionHistoryRepository redemptionHistoryRepository;
 
+    @Autowired
+    private AuditLogService auditLogService;
+
+    @Autowired
+    private TierRepository tierRepository;
+    
+    @Autowired
+    private CustomerRepository customerRepository;
+
     // ==========================================
-    // 1. LẤY DANH SÁCH TẤT CẢ QUÀ (User + Admin)
-    // GET: http://localhost:8080/api/rewards
+    // 1. LẤY DANH SÁCH TẤT CẢ QUÀ
     // ==========================================
     @GetMapping
     public List<Reward> getAll() {
@@ -34,7 +48,6 @@ public class RewardController {
 
     // ==========================================
     // 2. LỊCH SỬ ĐỔI QUÀ (Admin - Xem tất cả)
-    // GET: http://localhost:8080/api/rewards/history
     // ==========================================
     @GetMapping("/history")
     public List<RedemptionHistory> getAllHistory() {
@@ -42,18 +55,15 @@ public class RewardController {
     }
 
     // ==========================================
-    // 3. LỊCH SỬ ĐỔI QUÀ CÁ NHÂN (User - Xem của mình)
-    // GET: http://localhost:8080/api/rewards/history/{customerId}
+    // 3. LỊCH SỬ ĐỔI QUÀ CÁ NHÂN (User)
     // ==========================================
     @GetMapping("/history/{customerId}")
     public List<RedemptionHistory> getUserHistory(@PathVariable Long customerId) {
-        // Cần đảm bảo Repository đã có hàm này (xem lưu ý bên dưới)
         return redemptionHistoryRepository.findByCustomerIdOrderByRedeemedAtDesc(customerId);
     }
 
     // ==========================================
     // 4. THÊM QUÀ MỚI (Admin)
-    // POST: http://localhost:8080/api/rewards
     // ==========================================
     @PostMapping
     public Reward create(@RequestBody Reward reward) {
@@ -62,7 +72,6 @@ public class RewardController {
 
     // ==========================================
     // 5. SỬA QUÀ (Admin)
-    // PUT: http://localhost:8080/api/rewards/{id}
     // ==========================================
     @PutMapping("/{id}")
     public ResponseEntity<Reward> update(@PathVariable Long id, @RequestBody Reward reward) {
@@ -71,7 +80,6 @@ public class RewardController {
 
     // ==========================================
     // 6. XÓA QUÀ (Admin)
-    // DELETE: http://localhost:8080/api/rewards/{id}
     // ==========================================
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
@@ -80,21 +88,59 @@ public class RewardController {
     }
 
     // ==========================================
-    // 7. THỰC HIỆN ĐỔI QUÀ (User)
-    // POST: http://localhost:8080/api/rewards/redeem
+    // 7. THỰC HIỆN ĐỔI QUÀ (CÓ LOGIC HẠ HẠNG)
     // ==========================================
     @PostMapping("/redeem")
     public ResponseEntity<?> redeemReward(@RequestBody RedeemRequest request) {
         try {
+            // A. Thực hiện đổi quà (Điểm đã bị trừ trong Service)
             RedemptionHistory history = rewardService.redeemReward(request.getCustomerId(), request.getRewardId());
+
+            // B. LOGIC MỚI: KIỂM TRA VÀ HẠ HẠNG NẾU CẦN
+            Customer customer = history.getCustomer(); 
+            int currentPoints = customer.getPointBalance();
+
+            // Lấy tất cả các hạng, sắp xếp điểm từ CAO xuống THẤP
+            List<Tier> tiers = tierRepository.findAll(Sort.by(Sort.Direction.DESC, "minPoint"));
+            String correctTier = "Mới"; // Hạng mặc định thấp nhất
+
+            // Tìm hạng phù hợp với điểm hiện tại
+            for (Tier tier : tiers) {
+                if (currentPoints >= tier.getMinPoint()) {
+                    correctTier = tier.getName();
+                    break;
+                }
+            }
+
+            // Nếu hạng đúng khác hạng hiện tại -> Cập nhật (Hạ hạng)
+            if (!correctTier.equals(customer.getTier())) {
+                customer.setTier(correctTier);
+                customerRepository.save(customer);
+            }
+
+            // C. GHI LOG
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String currentUsername = "Hệ thống";
+            if (auth != null && auth.isAuthenticated()) {
+                currentUsername = auth.getName();
+            }
+
+            String rewardName = history.getReward() != null ? history.getReward().getName() : "Quà tặng";
+            String logDetails = "Đổi: " + rewardName + " (-" + history.getPointsUsed() + " điểm)";
+            
+            if (!correctTier.equals(history.getCustomer().getTier())) {
+                 logDetails += " | Cập nhật hạng: " + correctTier;
+            }
+
+            auditLogService.saveLog(currentUsername, "ĐỔI QUÀ", logDetails);
+
             return ResponseEntity.ok(history);
+
         } catch (RuntimeException e) {
-            // Trả về lỗi 400 nếu không đủ điểm hoặc hết hàng
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    // DTO hứng dữ liệu khi đổi quà
     @Data
     static class RedeemRequest {
         private Long customerId;

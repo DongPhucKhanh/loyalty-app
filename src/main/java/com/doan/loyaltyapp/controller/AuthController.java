@@ -4,6 +4,7 @@ import com.doan.loyaltyapp.model.AdminUser;
 import com.doan.loyaltyapp.model.Employee;
 import com.doan.loyaltyapp.repository.AdminUserRepository;
 import com.doan.loyaltyapp.repository.EmployeeRepository;
+import com.doan.loyaltyapp.utils.JwtUtils; // <--- ĐÃ SỬA: Dùng 'utils' (có chữ s) cho khớp với file JwtUtils
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -14,57 +15,63 @@ import java.util.Map;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/api/auth") // Frontend sẽ gọi vào: /api/auth/login
-@CrossOrigin(origins = "*")  // Cho phép React truy cập
+@RequestMapping("/api/auth")
+@CrossOrigin(origins = "*") // Cho phép React truy cập
 public class AuthController {
 
     @Autowired
-    private AdminUserRepository adminRepo;    // Repository của bảng admin_users
+    private AdminUserRepository adminRepo;    // Repository quản lý Admin
 
     @Autowired
-    private EmployeeRepository employeeRepo;  // Repository của bảng employees
+    private EmployeeRepository employeeRepo;  // Repository quản lý Nhân viên
 
     @Autowired
-    private PasswordEncoder passwordEncoder;  // Công cụ mã hóa/so sánh mật khẩu
+    private PasswordEncoder passwordEncoder;  // Mã hóa mật khẩu
+
+    @Autowired
+    private JwtUtils jwtUtils; // Tiêm Bean tạo Token vào đây
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
         String username = loginData.get("username");
         String password = loginData.get("password");
 
-        // Tạo Map để trả về kết quả JSON
+        // Map chứa kết quả trả về cho Frontend
         Map<String, Object> response = new HashMap<>();
 
         // -----------------------------------------------------------
-        // BƯỚC 1: Tìm trong bảng ADMIN trước (Ưu tiên Sếp)
+        // BƯỚC 1: Tìm trong bảng ADMIN (Ưu tiên Admin)
         // -----------------------------------------------------------
         Optional<AdminUser> adminOpt = adminRepo.findByUsername(username);
 
         if (adminOpt.isPresent()) {
             AdminUser admin = adminOpt.get();
-            // So sánh mật khẩu nhập vào với mật khẩu mã hóa trong DB
+            // So sánh mật khẩu
             if (passwordEncoder.matches(password, admin.getPassword())) {
                 response.put("id", admin.getId());
                 response.put("username", admin.getUsername());
                 response.put("fullName", admin.getFullName());
-                response.put("role", "ADMIN"); // Quan trọng: Đánh dấu là ADMIN
+                response.put("role", "ADMIN");
                 
-                // Nếu bạn có dùng JWT token thì gen token và put vào đây
-                // response.put("token", jwtUtils.generateToken(...)); 
+                // --- QUAN TRỌNG: Tạo Token cho Admin ---
+                String token = jwtUtils.generateToken(admin.getUsername());
+                response.put("token", token); 
+                // ---------------------------------------
 
                 return ResponseEntity.ok(response);
             }
         }
 
         // -----------------------------------------------------------
-        // BƯỚC 2: Nếu không thấy Admin, tìm tiếp trong bảng EMPLOYEE
+        // BƯỚC 2: Tìm trong bảng EMPLOYEE (Nếu không phải Admin)
         // -----------------------------------------------------------
         Optional<Employee> empOpt = employeeRepo.findByUsername(username);
 
         if (empOpt.isPresent()) {
             Employee emp = empOpt.get();
+            // So sánh mật khẩu
             if (passwordEncoder.matches(password, emp.getPassword())) {
-                // Kiểm tra xem nhân viên có bị khóa không
+                // Kiểm tra tài khoản có bị khóa không
                 if (!emp.isActive()) {
                     return ResponseEntity.status(403).body("Tài khoản này đã bị khóa!");
                 }
@@ -72,14 +79,19 @@ public class AuthController {
                 response.put("id", emp.getId());
                 response.put("username", emp.getUsername());
                 response.put("fullName", emp.getFullName());
-                response.put("role", "STAFF"); // Quan trọng: Đánh dấu là STAFF
+                response.put("role", "STAFF");
+                
+                // --- QUAN TRỌNG: Tạo Token cho Nhân viên ---
+                String token = jwtUtils.generateToken(emp.getUsername());
+                response.put("token", token);
+                // -------------------------------------------
                 
                 return ResponseEntity.ok(response);
             }
         }
 
         // -----------------------------------------------------------
-        // BƯỚC 3: Nếu tìm cả 2 bảng đều không khớp
+        // BƯỚC 3: Đăng nhập thất bại
         // -----------------------------------------------------------
         return ResponseEntity.status(401).body("Sai tên đăng nhập hoặc mật khẩu!");
     }

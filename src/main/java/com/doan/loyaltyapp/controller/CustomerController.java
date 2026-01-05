@@ -6,6 +6,7 @@ import com.doan.loyaltyapp.service.AuditLogService;
 import com.doan.loyaltyapp.utils.JwtUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder; // <--- 1. IMPORT QUAN TRỌNG
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -40,44 +41,48 @@ public class CustomerController {
     }
 
     // ============================================================
-    // 1. ĐĂNG KÝ (CẬP NHẬT ĐẦY ĐỦ TRƯỜNG MỚI)
+    // 1. ĐĂNG KÝ / TẠO KHÁCH HÀNG MỚI
     // ============================================================
     @PostMapping
     public ResponseEntity<?> createCustomer(@RequestBody Customer customer) {
-        // --- LOG KIỂM TRA CODE MỚI ---
         System.out.println("DEBUG: Đang đăng ký khách hàng mới: " + customer.getName());
 
-        // 1. Kiểm tra số điện thoại đã tồn tại chưa
+        // 1. Kiểm tra số điện thoại
         if (customer.getPhone() != null && customerRepository.findByPhone(customer.getPhone()).isPresent()) {
             return ResponseEntity.badRequest().body("Số điện thoại đã tồn tại!");
         }
 
-        // 2. Xử lý Mật khẩu (Mặc định & Mã hóa)
+        // 2. Xử lý Mật khẩu
         if (customer.getPassword() == null || customer.getPassword().isEmpty()) {
             customer.setPassword("123456");
         }
-        // QUAN TRỌNG: Mã hóa mật khẩu trước khi lưu
         customer.setPassword(passwordEncoder.encode(customer.getPassword()));
 
-        // 3. Xử lý dữ liệu mặc định cho người dùng mới
-        if (customer.getPointBalance() == 0)
-            customer.setPointBalance(0);
-        if (customer.getTier() == null)
-            customer.setTier("Mới");
-
-        // Mới: Mặc định trạng thái là ACTIVE (Hoạt động)
+        // 3. Xử lý dữ liệu mặc định
+        if (customer.getPointBalance() == 0) customer.setPointBalance(0);
+        if (customer.getTier() == null) customer.setTier("Mới");
         if (customer.getStatus() == null || customer.getStatus().isEmpty()) {
             customer.setStatus("ACTIVE");
         }
-
-        // Mới: Mặc định Avatar nếu chưa có
         if (customer.getAvatar() == null || customer.getAvatar().isEmpty()) {
-            customer.setAvatar("https://cdn-icons-png.flaticon.com/512/149/149071.png"); // Link ảnh mẫu
+            customer.setAvatar("https://cdn-icons-png.flaticon.com/512/149/149071.png");
         }
 
-        // Lưu vào Database
         try {
             Customer savedCustomer = customerRepository.save(customer);
+
+            // --- 4. GHI LOG (QUAN TRỌNG) ---
+            // Lấy tên người đang thao tác (NV06, Admin...)
+            String currentUsername = "Khách tự đăng ký";
+            try {
+                currentUsername = SecurityContextHolder.getContext().getAuthentication().getName();
+                if (currentUsername.equals("anonymousUser")) currentUsername = "Khách tự đăng ký";
+            } catch (Exception e) {}
+
+            auditLogService.saveLog(currentUsername, "TẠO KHÁCH HÀNG", 
+                    "Tên: " + savedCustomer.getName() + " - SĐT: " + savedCustomer.getPhone());
+            // -------------------------------
+
             return ResponseEntity.ok(savedCustomer);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Lỗi lưu dữ liệu: " + e.getMessage());
@@ -85,14 +90,13 @@ public class CustomerController {
     }
 
     // ============================================================
-    // 2. ĐĂNG NHẬP (KIỂM TRA MẬT KHẨU MÃ HÓA & TRẠNG THÁI)
+    // 2. ĐĂNG NHẬP
     // ============================================================
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
         String phone = loginData.get("phone");
         String rawPassword = loginData.get("password");
 
-        // 1. Tìm tài khoản theo SĐT
         Optional<Customer> customerOpt = customerRepository.findByPhone(phone);
         if (customerOpt.isEmpty()) {
             return ResponseEntity.badRequest().body("Số điện thoại không tồn tại!");
@@ -100,17 +104,14 @@ public class CustomerController {
 
         Customer customer = customerOpt.get();
 
-        // 2. So sánh mật khẩu (Raw vs Encoded)
         if (!passwordEncoder.matches(rawPassword, customer.getPassword())) {
             return ResponseEntity.badRequest().body("Sai mật khẩu!");
         }
 
-        // 3. Kiểm tra trạng thái tài khoản (Mới)
         if ("LOCKED".equals(customer.getStatus()) || "KHOA".equals(customer.getStatus())) {
             return ResponseEntity.badRequest().body("Tài khoản của bạn đã bị khóa!");
         }
 
-        // 4. Tạo Token và trả về thông tin
         String token = jwtUtils.generateToken(customer.getPhone());
 
         Map<String, Object> response = new HashMap<>();
@@ -120,56 +121,60 @@ public class CustomerController {
         response.put("phone", customer.getPhone());
         response.put("pointBalance", customer.getPointBalance());
         response.put("tier", customer.getTier());
-        response.put("avatar", customer.getAvatar()); // Trả về avatar để hiển thị
+        response.put("avatar", customer.getAvatar());
         response.put("role", "CUSTOMER");
 
         return ResponseEntity.ok(response);
     }
 
     // ============================================================
-    // 3. CẬP NHẬT THÔNG TIN (BAO GỒM CẢ CÁC TRƯỜNG MỚI)
+    // 3. CẬP NHẬT THÔNG TIN
     // ============================================================
     @PutMapping("/{id}")
     public ResponseEntity<?> updateCustomer(@PathVariable Long id, @RequestBody Customer customerDetails) {
         Customer existingCustomer = customerRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy khách hàng ID: " + id));
 
-        // Cập nhật các thông tin cơ bản
+        // Cập nhật thông tin
         existingCustomer.setName(customerDetails.getName());
         existingCustomer.setPhone(customerDetails.getPhone());
         existingCustomer.setEmail(customerDetails.getEmail());
-        existingCustomer.setAddress(customerDetails.getAddress()); // Địa chỉ
+        existingCustomer.setAddress(customerDetails.getAddress());
 
-        // Cập nhật các trường mới
-        if (customerDetails.getGender() != null)
-            existingCustomer.setGender(customerDetails.getGender());
-        if (customerDetails.getDob() != null)
-            existingCustomer.setDob(customerDetails.getDob());
-        if (customerDetails.getAvatar() != null)
-            existingCustomer.setAvatar(customerDetails.getAvatar());
-        if (customerDetails.getStatus() != null)
-            existingCustomer.setStatus(customerDetails.getStatus());
+        if (customerDetails.getGender() != null) existingCustomer.setGender(customerDetails.getGender());
+        if (customerDetails.getDob() != null) existingCustomer.setDob(customerDetails.getDob());
+        if (customerDetails.getAvatar() != null) existingCustomer.setAvatar(customerDetails.getAvatar());
+        if (customerDetails.getStatus() != null) existingCustomer.setStatus(customerDetails.getStatus());
 
-        // Chỉ mã hóa lại nếu người dùng nhập mật khẩu MỚI
         if (customerDetails.getPassword() != null && !customerDetails.getPassword().isEmpty()) {
             existingCustomer.setPassword(passwordEncoder.encode(customerDetails.getPassword()));
         }
 
         Customer updatedCustomer = customerRepository.save(existingCustomer);
+
+        // --- GHI LOG CẬP NHẬT ---
+        String currentUsername = SecurityContextHolder.getContext().getAuthentication().getName();
+        auditLogService.saveLog(currentUsername, "CẬP NHẬT KHÁCH", 
+                "Đã sửa thông tin khách ID: " + id);
+        // ------------------------
+
         return ResponseEntity.ok(updatedCustomer);
     }
 
-    // Xóa khách hàng
+    // ============================================================
+    // 4. XÓA KHÁCH HÀNG
+    // ============================================================
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteCustomer(@PathVariable Long id) {
         if (!customerRepository.existsById(id))
             return ResponseEntity.notFound().build();
-        // Lấy thông tin khách trước khi xóa để lưu log
+        
         Customer cus = customerRepository.findById(id).get();
         customerRepository.deleteById(id);
-        // --- GHI LOG ---
-        // "who": Tạm thời để 'Admin' hoặc lấy từ Token nếu có
-        auditLogService.saveLog("Admin", "XÓA KHÁCH HÀNG",
+        
+        // --- GHI LOG XÓA (Đã sửa lấy đúng tên người xóa) ---
+        String currentUsername = SecurityContextHolder.getContext().getAuthentication().getName();
+        auditLogService.saveLog(currentUsername, "XÓA KHÁCH HÀNG",
                 "Đã xóa khách: " + cus.getName() + " - SĐT: " + cus.getPhone());
 
         return ResponseEntity.ok().build();
@@ -184,5 +189,4 @@ public class CustomerController {
             return ResponseEntity.notFound().build();
         }
     }
-
 }

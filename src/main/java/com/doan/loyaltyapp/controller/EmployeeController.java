@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import com.doan.loyaltyapp.model.AuditLog;
+import com.doan.loyaltyapp.repository.AuditLogRepository;
 
 import java.util.List;
 
@@ -23,6 +25,8 @@ public class EmployeeController {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private AuditLogRepository auditLogRepository;
 
     // 1. Lấy danh sách
     @GetMapping
@@ -69,5 +73,12 @@ public class EmployeeController {
         employeeRepository.deleteById(id);
         auditLogService.saveLog("Admin", "XÓA NHÂN VIÊN", "ID: " + id);
         return ResponseEntity.ok().build();
+    }
+    // 2. THÊM API MỚI NÀY VÀO CUỐI CLASS
+    // API: Lấy lịch sử thao tác của nhân viên theo username
+    @GetMapping("/{username}/history")
+    public ResponseEntity<List<AuditLog>> getEmployeeHistory(@PathVariable String username) {
+        List<AuditLog> logs = auditLogRepository.findByPerformedByOrderByTimestampDesc(username);
+        return ResponseEntity.ok(logs);
     }
 }

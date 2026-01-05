@@ -2,11 +2,16 @@ package com.doan.loyaltyapp.repository;
 
 import com.doan.loyaltyapp.model.AuditLog;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 import java.util.List;
 
-@Repository
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
-    // Tìm log mới nhất xếp lên đầu
-    List<AuditLog> findAllByOrderByTimestampDesc();
+
+    // 1. Hàm lấy TOÀN BỘ log, sắp xếp mới nhất (Dùng cho Admin / AuditLogController)
+    // 👉 BẠN CẦN THÊM DÒNG NÀY ĐỂ SỬA LỖI:
+    List<AuditLog> findAllByOrderByTimestampDesc(); 
+
+    // 2. Hàm lấy log CỦA 1 NGƯỜI CỤ THỂ (Dùng cho Nhân viên / EmployeeController)
+    // (Giữ nguyên dòng này bạn đã làm trước đó)
+    List<AuditLog> findByPerformedByOrderByTimestampDesc(String performedBy);
+
 }

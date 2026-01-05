@@ -2,17 +2,19 @@ package com.doan.loyaltyapp.controller;
 
 import com.doan.loyaltyapp.model.Customer;
 import com.doan.loyaltyapp.model.Promotion;
-import com.doan.loyaltyapp.model.Tier; // <--- Import Tier
+import com.doan.loyaltyapp.model.Tier;
 import com.doan.loyaltyapp.model.Transaction;
 import com.doan.loyaltyapp.repository.CustomerRepository;
 import com.doan.loyaltyapp.repository.PromotionRepository;
-import com.doan.loyaltyapp.repository.TierRepository; // <--- 1. Import TierRepository
+import com.doan.loyaltyapp.repository.TierRepository;
 import com.doan.loyaltyapp.repository.TransactionRepository;
 import com.doan.loyaltyapp.service.AuditLogService;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication; // <--- Import này quan trọng
+import org.springframework.security.core.context.SecurityContextHolder; // <--- Import này quan trọng
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -34,7 +36,7 @@ public class TransactionController {
     private PromotionRepository promotionRepository;
 
     @Autowired
-    private TierRepository tierRepository; // <--- 2. Tiêm Repo lấy hạng
+    private TierRepository tierRepository;
 
     @Autowired
     private AuditLogService auditLogService;
@@ -51,7 +53,7 @@ public class TransactionController {
         return transactionRepository.findByCustomerIdOrderByTransactionDateDesc(customerId);
     }
 
-    // 3. API CỘNG ĐIỂM (Full Option: KM + Audit Log + Dynamic Tier)
+    // 3. API CỘNG ĐIỂM (Full Option: KM + Audit Log + Dynamic Tier + Current User)
     @PostMapping("/add-points")
     public ResponseEntity<?> addPoints(
             @RequestParam Long customerId,
@@ -61,7 +63,7 @@ public class TransactionController {
             Customer customer = customerRepository.findById(customerId)
                     .orElseThrow(() -> new RuntimeException("Khách hàng không tồn tại!"));
 
-            // B. Tính điểm gốc
+            // B. Tính điểm gốc (Ví dụ: 10.000đ = 1 điểm)
             int basePoints = (int) (amount / 10000);
 
             // C. Kiểm tra khuyến mãi
@@ -88,42 +90,54 @@ public class TransactionController {
             transaction.setTransactionDate(LocalDateTime.now());
             transactionRepository.save(transaction);
 
-            // F. Cập nhật ví điểm
+            // F. Cập nhật ví điểm khách hàng
             int newBalance = customer.getPointBalance() + finalPoints;
             customer.setPointBalance(newBalance);
 
             // --- G. CẬP NHẬT HẠNG ĐỘNG (LOGIC MỚI) ---
-            // 1. Lấy tất cả các hạng từ DB, sắp xếp điểm từ CAO xuống THẤP
             List<Tier> tiers = tierRepository.findAll(Sort.by(Sort.Direction.DESC, "minPoint"));
             
-            String newTierName = "Mới"; // Mặc định nếu không đạt hạng nào
+            String newTierName = "Mới"; // Mặc định
             
-            // 2. Duyệt qua từng hạng, nếu điểm khách >= điểm hạng thì gán luôn (vì đã sort giảm dần)
             for (Tier tier : tiers) {
                 if (newBalance >= tier.getMinPoint()) {
                     newTierName = tier.getName();
-                    break; // Tìm thấy hạng cao nhất phù hợp thì dừng ngay
+                    break; 
                 }
             }
             
-            // Chỉ cập nhật nếu hạng thay đổi
-            if (!newTierName.equals(customer.getTier())) {
+            boolean tierChanged = !newTierName.equals(customer.getTier());
+            if (tierChanged) {
                 customer.setTier(newTierName);
-                // Có thể ghi thêm log thăng hạng ở đây nếu muốn
             }
             // ------------------------------------------
 
             customerRepository.save(customer);
 
-            // H. Ghi Log hệ thống
-            String logDetails = "Cộng " + finalPoints + " điểm cho khách " + customer.getName() + 
-                                " (Bill: " + String.format("%,.0f", amount) + "đ)";
+            // H. Ghi Log hệ thống (QUAN TRỌNG: Lấy user hiện tại)
             
-            if (multiplier > 1.0) {
-                logDetails += " - KM: " + promoName + " (x" + multiplier + ")";
+            // 1. Lấy tên người dùng đang đăng nhập (Ví dụ: admin, nv01...)
+            String currentUsername = "Hệ thống"; // Mặc định nếu chạy test không login
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
+                currentUsername = auth.getName();
             }
 
-            auditLogService.saveLog("Hệ thống", "CỘNG ĐIỂM", logDetails);
+            // 2. Tạo nội dung log chi tiết
+            String logDetails = "KH: " + customer.getName() + 
+                              " | Bill: " + String.format("%,.0f", amount) + "đ" +
+                              " | Điểm: +" + finalPoints;
+            
+            if (multiplier > 1.0) {
+                logDetails += " (KM: " + promoName + " x" + multiplier + ")";
+            }
+
+            if (tierChanged) {
+                logDetails += " | Thăng hạng: " + newTierName;
+            }
+
+            // 3. Lưu log
+            auditLogService.saveLog(currentUsername, "TÍCH ĐIỂM", logDetails);
 
             return ResponseEntity.ok("Thành công! Điểm mới: " + newBalance + " (Hạng: " + newTierName + ")");
 
