@@ -13,6 +13,7 @@ import RewardPage from './pages/RewardPage';
 import TierPage from './pages/TierPage';
 import PromotionPage from './pages/PromotionPage';
 import AuditLogPage from './pages/AuditLogPage';
+import EmployeeHistoryPage from './pages/EmployeeHistoryPage';
 
 // --- 1. COMPONENT BẢO VỆ: ĐĂNG NHẬP MỚI ĐƯỢC VÀO ---
 // Sửa đổi: Kiểm tra 'user_info' thay vì 'access_token' để tránh lỗi khi chưa có token
@@ -56,6 +57,7 @@ function App() {
             <Route path="/tiers" element={<AdminRoute><TierPage /></AdminRoute>} />
             <Route path="/promotions" element={<AdminRoute><PromotionPage /></AdminRoute>} />
             <Route path="/audit-logs" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
+            <Route path="/my-history" element={<EmployeeHistoryPage />} />
             
         </Route>
 

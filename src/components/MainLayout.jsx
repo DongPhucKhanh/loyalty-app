@@ -3,7 +3,7 @@ import { Layout, Menu, Button, theme, Tag } from 'antd';
 import { 
     TrophyOutlined, RocketOutlined, UserOutlined, 
     VideoCameraOutlined, GiftOutlined, LogoutOutlined,
-    DashboardOutlined, SafetyCertificateOutlined, TeamOutlined
+    DashboardOutlined, SafetyCertificateOutlined, TeamOutlined, HistoryOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 
@@ -85,6 +85,12 @@ const MainLayout = () => {
             label: 'Nhật ký hệ thống',
             roles: ['ADMIN'] 
         },
+        { 
+    key: '/my-history', 
+    icon: <HistoryOutlined />, 
+    label: 'Lịch sử của tôi',
+    roles: ['ADMIN', 'STAFF'] // Cả 2 đều xem được
+},
     ];
 
     // --- LỌC MENU THEO QUYỀN ---
