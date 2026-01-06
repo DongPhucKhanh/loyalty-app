@@ -61,6 +61,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/tiers/**", "/api/rewards/**", "/api/promotions/**").permitAll()
                 .requestMatchers("/api/customers/**", "/api/admin/**").permitAll()
                 .requestMatchers("/api/transactions/**").permitAll()
+                .requestMatchers("/api/internal-notes/**").hasAnyAuthority("ADMIN", "STAFF") 
 
                 // 6. Cho phép tất cả GET để frontend dễ gọi dữ liệu (Test only)
                 .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
