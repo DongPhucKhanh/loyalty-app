@@ -3,196 +3,223 @@ import { useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 import { 
     User, QrCode, RotateCcw, Clock, Award, 
-    Zap, ChevronRight, Gift, Star, Tag 
+    ChevronRight, Gift, Bell, AlertCircle, X 
 } from 'lucide-react';
 
 const Home = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const [showNotif, setShowNotif] = useState(false);
     
-    // State lưu thông tin User
     const [summary, setSummary] = useState({
-        name: 'Khách hàng',
-        points: 0,
-        currentTier: 'Mới',
-        nextTierPoints: 2000,
-        nextTierName: 'Bạc',
-        progress: 0,
-        recentTransactions: []
+        id: null, name: 'Khách hàng', points: 0, currentTier: 'Thành viên',
+        nextTierName: '', nextTierPoints: 0, progress: 0, expiringPoints: 0
     });
 
-    // State lưu danh sách Ưu đãi
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
     const [latestRewards, setLatestRewards] = useState([]);
 
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem('user_info'));
-        if (storedUser) {
+        if (storedUser && storedUser.id) {
             fetchProfileSummary(storedUser.id);
             fetchLatestRewards();
+            fetchNotifications(storedUser.id);
         } else {
             navigate('/login');
         }
     }, [navigate]);
 
     const fetchProfileSummary = async (userId) => {
-        setLoading(true);
         try {
             const data = await axiosClient.get(`/user/profile-summary?id=${userId}`);
             if (data) setSummary(data);
-        } catch (error) {
-            console.error("Lỗi tải profile:", error);
-        } finally {
-            setLoading(false);
+        } catch (error) { console.error("Lỗi tải profile:", error); }
+    };
+
+    const fetchNotifications = async (userId) => {
+        try {
+            const data = await axiosClient.get(`/notifications?userId=${userId}`);
+            setNotifications(data);
+            // Đếm số lượng tin nhắn chưa đọc từ danh sách trả về
+            const unread = data.filter(n => !n.isRead).length; 
+            setUnreadCount(unread);
+        } catch (error) { console.error("Lỗi tải thông báo"); }
+    };
+
+    // --- LOGIC MỚI: BẬT/TẮT THÔNG BÁO & ẨN CHẤM ĐỎ ---
+    const handleToggleNotif = async () => {
+        const nextState = !showNotif;
+        setShowNotif(nextState);
+
+        // Nếu mở bảng thông báo và đang có tin chưa đọc
+        if (nextState && unreadCount > 0) {
+            try {
+                // 1. Gọi API Backend để đánh dấu tất cả là đã đọc
+                await axiosClient.put(`/notifications/mark-all-read?userId=${summary.id}`);
+                
+                // 2. Cập nhật giao diện local: ẩn chấm đỏ và bỏ in đậm tin nhắn
+                setUnreadCount(0); 
+                setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+            } catch (error) {
+                console.error("Lỗi cập nhật trạng thái thông báo:", error);
+            }
         }
+    };
+
+    const handleMarkSingleRead = async (notifId) => {
+        try {
+            await axiosClient.put(`/notifications/${notifId}/read`);
+            setNotifications(notifications.map(n => n.id === notifId ? {...n, isRead: true} : n));
+        } catch (error) { console.error("Lỗi đánh dấu tin lẻ"); }
     };
 
     const fetchLatestRewards = async () => {
         try {
             const data = await axiosClient.get('/rewards');
-            if (data && Array.isArray(data)) {
-                const sortedRewards = data.sort((a, b) => b.id - a.id).slice(0, 3);
-                setLatestRewards(sortedRewards);
-            }
-        } catch (error) {
-            console.error("Lỗi tải ưu đãi:", error);
-        }
+            if (data && Array.isArray(data)) setLatestRewards(data.slice(0, 3));
+        } catch (error) { console.error("Lỗi tải ưu đãi:", error); }
     };
 
-    const handleRefresh = () => {
-        const storedUser = JSON.parse(localStorage.getItem('user_info'));
-        if (storedUser) fetchProfileSummary(storedUser.id);
-    };
-
-    const getCardStyle = (index) => {
-        const styles = [
-            { bg: 'bg-orange-100', text: 'text-orange-500', icon: <Zap size={32} /> },
-            { bg: 'bg-blue-100', text: 'text-blue-500', icon: <Gift size={32} /> },
-            { bg: 'bg-purple-100', text: 'text-purple-500', icon: <Star size={32} /> },
-            { bg: 'bg-green-100', text: 'text-green-500', icon: <Tag size={32} /> },
-        ];
-        return styles[index % styles.length];
+    const handleRefresh = (e) => {
+        e.stopPropagation();
+        if (summary.id) fetchProfileSummary(summary.id);
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-24 font-sans">
+        <div className="min-h-screen bg-slate-50 pb-24 font-sans relative">
             
-            {/* --- HEADER (Giữ nguyên) --- */}
-            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 pt-10 pb-20 px-6 rounded-b-[40px] relative shadow-lg">
+            {/* --- 1. HEADER --- */}
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-800 pt-10 pb-24 px-6 rounded-b-[40px] relative shadow-lg">
                 <div className="flex justify-between items-center mb-6 text-white">
                     <div>
                         <p className="text-blue-100 text-sm mb-0.5">Xin chào,</p>
                         <h1 className="text-2xl font-bold capitalize tracking-wide">{summary.name}</h1>
                     </div>
-                    <button 
-                        onClick={() => navigate('/profile')}
-                        className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/30 active:scale-95 transition-transform"
-                    >
-                        <User className="text-white" size={20} />
-                    </button>
+                    
+                    <div className="flex gap-3 relative">
+                        {/* NÚT CHUÔNG */}
+                        <button 
+                            onClick={handleToggleNotif}
+                            className="w-10 h-10 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/20 relative active:scale-90 transition"
+                        >
+                            <Bell size={20} className="text-white" />
+                            {/* Chấm đỏ chỉ hiện khi unreadCount > 0 */}
+                            {unreadCount > 0 && (
+                                <span className="absolute top-1.5 right-1.5 w-3 h-3 bg-red-500 border-2 border-indigo-700 rounded-full"></span>
+                            )}
+                        </button>
+
+                        {/* DROPDOWN THÔNG BÁO */}
+                        {showNotif && (
+                            <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-2xl z-50 overflow-hidden border border-gray-100 animate-in fade-in slide-in-from-top-2">
+                                <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                                    <span className="font-bold text-gray-700">Thông báo gần đây</span>
+                                    <button onClick={() => setShowNotif(false)}><X size={18} className="text-gray-400"/></button>
+                                </div>
+                                <div className="max-h-80 overflow-y-auto">
+                                    {notifications.length === 0 ? (
+                                        <div className="p-8 text-center text-gray-400 text-sm">Bạn chưa có thông báo nào</div>
+                                    ) : (
+                                        notifications.map((notif) => (
+                                            <div 
+                                                key={notif.id} 
+                                                className={`p-4 border-b border-gray-50 flex gap-3 ${!notif.isRead ? 'bg-blue-50/40' : 'opacity-70'}`}
+                                            >
+                                                <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${!notif.isRead ? 'bg-blue-500' : 'bg-transparent'}`}></div>
+                                                <div className="flex-1">
+                                                    <h4 className={`text-sm ${!notif.isRead ? 'font-bold text-gray-800' : 'text-gray-600'}`}>{notif.title}</h4>
+                                                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">{notif.message}</p>
+                                                    <p className="text-[10px] text-gray-400 mt-2 italic">{new Date(notif.createdAt).toLocaleString('vi-VN')}</p>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <button onClick={() => navigate('/profile')} className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/30 overflow-hidden shadow-inner">
+                            {summary.avatar ? <img src={summary.avatar} className="w-full h-full object-cover"/> : <User className="text-white" size={20} />}
+                        </button>
+                    </div>
                 </div>
 
-                <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-2xl text-white shadow-2xl relative overflow-hidden">
-                    <div className="absolute -right-12 -top-12 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
-                    <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-blue-500/30 rounded-full blur-xl"></div>
+                {/* Thẻ Thành viên */}
+                <div onClick={() => navigate('/member-level')} className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-2xl text-white shadow-2xl relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform">
                     <div className="relative z-10">
                         <div className="flex justify-between items-start mb-6">
                             <div>
-                                <p className="text-blue-100 text-xs font-medium uppercase tracking-wider mb-1">Điểm tích lũy</p>
+                                <p className="text-blue-100 text-xs font-medium uppercase mb-1">Ví điểm hiện tại</p>
                                 <div className="flex items-center gap-2">
-                                    {/* FIX: Thêm ( || 0) để tránh lỗi crash */}
                                     <h2 className="text-4xl font-extrabold tracking-tight">{(summary.points || 0).toLocaleString()}</h2>
-                                    <button onClick={handleRefresh} className="p-1 hover:bg-white/10 rounded-full transition">
-                                        <RotateCcw size={16} className="text-blue-200" />
-                                    </button>
+                                    <button onClick={handleRefresh} className="p-1 hover:bg-white/10 rounded-full transition active:rotate-180"><RotateCcw size={16} className="text-blue-200" /></button>
                                 </div>
                             </div>
-                            <QrCode size={48} className="opacity-90" />
-                        </div>
-                        <div>
-                            <div className="flex justify-between text-xs text-blue-100 mb-1.5 font-medium">
-                                <span className="flex items-center gap-1"><Award size={12}/> {summary.currentTier}</span>
-                                <span>Mục tiêu: {summary.nextTierName}</span>
+                            <div className="flex flex-col items-center">
+                                <Award size={40} className="text-yellow-400 drop-shadow-lg" />
+                                <span className="text-[10px] font-bold uppercase mt-1 text-yellow-300">{summary.currentTier}</span>
                             </div>
-                            <div className="w-full bg-black/20 rounded-full h-1.5 backdrop-blur-sm">
-                                <div 
-                                    className="bg-gradient-to-r from-yellow-300 to-yellow-500 h-1.5 rounded-full shadow-[0_0_10px_rgba(253,224,71,0.6)] transition-all duration-1000 ease-out" 
-                                    style={{ width: `${Math.min(100, summary.progress * 100)}%` }}
-                                ></div>
+                        </div>
+
+                        <div>
+                            <div className="flex justify-between text-xs text-blue-100 mb-2 font-medium">
+                                <span>{summary.currentTier}</span>
+                                {summary.nextTierName !== 'MAX' ? <span>Mục tiêu: <b>{summary.nextTierName}</b></span> : <span className="text-yellow-300 font-bold">CẤP TỐI ĐA</span>}
+                            </div>
+                            <div className="w-full bg-black/20 rounded-full h-2 overflow-hidden">
+                                <div className="bg-gradient-to-r from-yellow-300 to-yellow-500 h-2 rounded-full transition-all duration-1000 shadow-[0_0_8px_rgba(253,224,71,0.4)]" style={{ width: `${(summary.progress || 0) * 100}%` }}></div>
+                            </div>
+                            <div className="flex justify-between items-center mt-2">
+                                <span className="text-[10px] text-blue-300 flex items-center gap-1">Lộ trình thăng hạng <ChevronRight size={10}/></span>
+                                {summary.nextTierName !== 'MAX' && <p className="text-[10px] text-blue-200">Cần thêm <b>{(summary.nextTierPoints - summary.points).toLocaleString()}</b> điểm</p>}
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* --- MENU NHANH (Giữ nguyên) --- */}
-            <div className="px-6 -mt-10 mb-6 relative z-20">
-                <div className="bg-white rounded-2xl p-4 shadow-lg shadow-blue-900/5 flex justify-around items-center">
+            {/* --- 2. MENU NHANH --- */}
+            <div className="px-6 relative z-20 -mt-10 mb-6">
+                <div className="bg-white rounded-3xl p-5 shadow-xl shadow-blue-900/5 flex justify-around items-center border border-gray-50">
                     <ActionButton icon={<Gift size={24} />} label="Đổi quà" color="text-pink-500" bgColor="bg-pink-50" onClick={() => navigate('/rewards')}/>
                     <div className="w-px h-8 bg-gray-100"></div>
-                    <ActionButton icon={<QrCode size={24} />} label="Mã QR" color="text-blue-500" bgColor="bg-blue-50" onClick={() => console.log("Show QR")} />
+                    <ActionButton icon={<QrCode size={24} />} label="Mã QR" color="text-blue-600" bgColor="bg-blue-50" onClick={() => {}} />
                     <div className="w-px h-8 bg-gray-100"></div>
                     <ActionButton icon={<Clock size={24} />} label="Lịch sử" color="text-violet-500" bgColor="bg-violet-50" onClick={() => navigate('/history')}/>
                 </div>
             </div>
 
-            {/* --- ƯU ĐÃI (FIX LỖI CRASH Ở ĐÂY) --- */}
+            {/* --- 3. QUÀ MỚI --- */}
             <div className="px-6 pb-6">
-                <div className="flex justify-between items-end mb-4">
-                    <h3 className="font-bold text-gray-800 text-lg">Quà mới cập nhật</h3>
-                    <button onClick={() => navigate('/rewards')} className="text-xs text-blue-600 font-semibold hover:underline">Xem tất cả</button>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-gray-800 text-lg">Ưu đãi nổi bật</h3>
+                    <button onClick={() => navigate('/rewards')} className="text-blue-600 text-xs font-bold">Tất cả</button>
                 </div>
-                
                 <div className="space-y-4">
-                    {latestRewards.length === 0 ? (
-                        <div className="text-center py-8 text-gray-400 text-sm italic">Chưa có ưu đãi nào mới.</div>
-                    ) : (
-                        latestRewards.map((item, index) => {
-                            const style = getCardStyle(index);
-                            
-                            // FIX: Dùng item.pointCost (ưu tiên) hoặc item.points, nếu không có thì lấy 0
-                            const pointsDisplay = item.pointCost || item.points || 0;
-
-                            return (
-                                <div 
-                                    key={item.id} 
-                                    onClick={() => navigate('/rewards')} 
-                                    className="bg-white p-3 rounded-2xl shadow-sm border border-gray-50 flex gap-4 active:scale-[0.98] transition-transform cursor-pointer"
-                                >
-                                    <div className={`w-20 h-20 ${style.bg} rounded-xl flex items-center justify-center flex-shrink-0 ${style.text}`}>
-                                        {style.icon}
-                                    </div>
-                                    <div className="flex-1 py-1 flex flex-col justify-between">
-                                        <div>
-                                            <h4 className="font-bold text-gray-800 mb-1 line-clamp-1">{item.name}</h4>
-                                            <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
-                                                {item.description || 'Đổi ngay món quà giá trị này.'}
-                                            </p>
-                                        </div>
-                                        <div className="mt-2 flex justify-between items-center">
-                                            {/* SỬ DỤNG BIẾN ĐÃ FIX */}
-                                            <span className={`text-xs font-bold ${style.text}`}>
-                                                {pointsDisplay.toLocaleString()} điểm
-                                            </span>
-                                            <div className={`flex items-center text-xs font-bold ${style.text}`}>
-                                                Chi tiết <ChevronRight size={14}/>
-                                            </div>
-                                        </div>
-                                    </div>
+                    {latestRewards.map((item) => (
+                        <div key={item.id} onClick={() => navigate('/rewards')} className="bg-white p-3 rounded-2xl border border-gray-50 flex gap-4 active:scale-[0.98] transition cursor-pointer shadow-sm hover:shadow-md">
+                            <div className="w-20 h-20 bg-slate-50 rounded-xl flex items-center justify-center text-3xl shrink-0">🎁</div>
+                            <div className="flex-1 py-1 flex flex-col justify-between overflow-hidden">
+                                <h4 className="font-bold text-gray-800 line-clamp-1">{item.name}</h4>
+                                <div className="flex justify-between items-center mt-2">
+                                    <span className="text-blue-600 font-bold text-sm">{(item.pointCost || 0).toLocaleString()} điểm</span>
+                                    <ChevronRight size={14} className="text-gray-300"/>
                                 </div>
-                            );
-                        })
-                    )}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
-
         </div>
     );
 };
 
 const ActionButton = ({ icon, label, color, bgColor, onClick }) => (
-    <button onClick={onClick} className="flex flex-col items-center gap-2 active:scale-90 transition-transform w-20">
-        <div className={`w-12 h-12 ${bgColor} ${color} rounded-2xl flex items-center justify-center shadow-sm mb-1`}>{icon}</div>
-        <span className="text-xs font-semibold text-gray-600">{label}</span>
+    <button onClick={onClick} className="flex flex-col items-center gap-2 active:scale-90 transition w-20">
+        <div className={`w-14 h-14 ${bgColor} ${color} rounded-2xl flex items-center justify-center shadow-sm mb-1`}>{icon}</div>
+        <span className="text-[11px] font-bold text-gray-500">{label}</span>
     </button>
 );
 

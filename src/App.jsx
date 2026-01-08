@@ -3,14 +3,24 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Rewards from './pages/Rewards';
-import History from './pages/History'; // Import trang mới
-import BottomNav from './components/BottomNav';
+import History from './pages/History';
 import ProfilePage from './pages/ProfilePage';
+import MemberLevelPage from './pages/MemberLevelPage';
+
+// --- CHỈ GIỮ LẠI CHATBOT AI ---
+import ChatAIWidget from './components/ChatAIWidget'; 
+import BottomNav from './components/BottomNav';
 
 function Layout() {
   const location = useLocation();
-  // Hiển thị menu ở 3 trang này
-  const showNav = ['/', '/rewards', '/history'].includes(location.pathname);
+
+  // 1. Cấu hình các trang hiện Menu điều hướng dưới cùng (BottomNav)
+  const navPaths = ['/', '/rewards', '/history', '/profile'];
+  const showNav = navPaths.includes(location.pathname);
+
+  // 2. Cấu hình hiển thị Chatbot AI (Ẩn ở trang đăng nhập/đăng ký)
+  const hideChatPaths = ['/login', '/register'];
+  const showChat = !hideChatPaths.includes(location.pathname);
 
   return (
     <>
@@ -19,13 +29,16 @@ function Layout() {
         <Route path="/register" element={<Register />} />
         <Route path="/" element={<Home />} />
         <Route path="/rewards" element={<Rewards />} />
-        
-        {/* Route mới cho trang Lịch Sử */}
         <Route path="/history" element={<History />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/member-level" element={<MemberLevelPage />} />
       </Routes>
       
+      {/* Menu điều hướng chính */}
       {showNav && <BottomNav />}
+
+      {/* Trợ lý ảo thông minh luôn sẵn sàng hỗ trợ khách hàng */}
+      {showChat && <ChatAIWidget />}
     </>
   );
 }
