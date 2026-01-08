@@ -180,4 +180,9 @@ public class UserController {
 
         return ResponseEntity.ok(summary);
     }
+    @GetMapping("/public/tiers")
+    public List<Tier> getAllTiers() {
+        // Lấy danh sách hạng, sắp xếp điểm từ thấp đến cao
+        return tierRepository.findAll(Sort.by(Sort.Direction.ASC, "minPoint"));
+    }
 }

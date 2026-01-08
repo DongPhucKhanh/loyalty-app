@@ -1,6 +1,5 @@
 package com.doan.loyaltyapp.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -16,12 +15,18 @@ public class Reward {
     
     private String description;
     
-    // Database của bạn là point_cost, code ánh xạ sang "points" cho Frontend dễ dùng
     @Column(name = "point_cost")
     private int pointCost; 
     
     @Column(name = "stock_quantity")
     private int stockQuantity; 
 
-    // LƯU Ý: Đã xóa trường 'image' và 'type' vì trong ảnh Database của bạn không có.
+    // --- CẬP NHẬT: PHẢI CÓ 2 TRƯỜNG NÀY ĐỂ XỬ LÝ VOUCHER ---
+    
+    // Ánh xạ với cột 'type' trong DB (Dùng để biết là VOUCHER hay GIFT)
+    private String type; 
+
+    // Ánh xạ với cột 'discount_value' trong DB (Số tiền được giảm)
+    @Column(name = "discount_value")
+    private Double discountValue; 
 }

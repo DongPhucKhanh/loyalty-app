@@ -1,15 +1,8 @@
 package com.doan.loyaltyapp.controller;
 
-import com.doan.loyaltyapp.model.Customer;
-import com.doan.loyaltyapp.model.Promotion;
-import com.doan.loyaltyapp.model.Tier;
-import com.doan.loyaltyapp.model.Transaction;
-import com.doan.loyaltyapp.repository.CustomerRepository;
-import com.doan.loyaltyapp.repository.PromotionRepository;
-import com.doan.loyaltyapp.repository.TierRepository;
-import com.doan.loyaltyapp.repository.TransactionRepository;
+import com.doan.loyaltyapp.model.*;
+import com.doan.loyaltyapp.repository.*;
 import com.doan.loyaltyapp.service.AuditLogService;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +13,9 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/transactions")
@@ -29,148 +24,157 @@ public class TransactionController {
 
     @Autowired
     private TransactionRepository transactionRepository;
-
     @Autowired
     private CustomerRepository customerRepository;
-
     @Autowired
     private PromotionRepository promotionRepository;
-
     @Autowired
     private TierRepository tierRepository;
-
+    @Autowired
+    private NotificationRepository notificationRepository;
+    @Autowired
+    private RedemptionRepository redemptionRepository;
     @Autowired
     private AuditLogService auditLogService;
 
-    // 1. Lấy TOÀN BỘ danh sách
+    // --- 1. LẤY TẤT CẢ GIAO DỊCH (Dành cho Admin/Staff) ---
     @GetMapping
     public List<Transaction> getAllTransactions() {
         return transactionRepository.findAll(Sort.by(Sort.Direction.DESC, "transactionDate"));
     }
 
-    // 2. Lấy lịch sử của 1 khách hàng
+    // --- 2. 🔥 FIX LỖI 403: LẤY LỊCH SỬ GIAO DỊCH THEO KHÁCH HÀNG ---
+    // Phương thức này xử lý yêu cầu: GET /api/transactions/customer/{id}
     @GetMapping("/customer/{customerId}")
-    public List<Transaction> getTransactionsByCustomer(@PathVariable Long customerId) {
-        return transactionRepository.findByCustomerIdOrderByTransactionDateDesc(customerId);
-    }
-
-    // ============================================================
-    // HÀM PHỤ: KIỂM TRA GIAN LẬN (PRIVATE)
-    // ============================================================
-    private void checkFraud(String currentUsername, Long custId, double amount, String custName) {
-        // 1. CẢNH BÁO: Ngoài giờ làm việc (22h - 8h sáng hôm sau)
-        LocalTime now = LocalTime.now();
-        if (now.isAfter(LocalTime.of(22, 0)) || now.isBefore(LocalTime.of(8, 0))) {
-            auditLogService.saveLog("CẢNH BÁO HỆ THỐNG", "GIAN LẬN GIỜ GIẤC", 
-                "User " + currentUsername + " tích điểm lúc " + now + " (Ngoài giờ làm việc!)");
-        }
-
-        // 2. CẢNH BÁO: Hóa đơn quá lớn (> 10 triệu)
-        if (amount > 10000000) {
-             auditLogService.saveLog("CẢNH BÁO HỆ THỐNG", "GIAN LẬN GIÁ TRỊ", 
-                "User " + currentUsername + " nhập hóa đơn KHỦNG: " + String.format("%,.0f", amount) + "đ cho khách " + custName);
-        }
-
-        // 3. CẢNH BÁO: Spam tích điểm (Quá 3 lần/ngày cho 1 khách)
-        LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-        long count = transactionRepository.countTransactionsToday(custId, startOfDay);
-        // count là số cũ, cộng lần này nữa là count + 1
-        if (count >= 10) {
-            auditLogService.saveLog("CẢNH BÁO HỆ THỐNG", "GIAN LẬN TẦN SUẤT", 
-                "User " + currentUsername + " đã tích điểm cho khách " + custName + " lần thứ " + (count + 1) + " trong ngày!");
+    public ResponseEntity<?> getTransactionsByCustomer(@PathVariable Long customerId) {
+        try {
+            // Gọi hàm từ Repository (Cần cập nhật Repository ở bước 2 bên dưới)
+            List<Transaction> transactions = transactionRepository.findByCustomerIdOrderByTransactionDateDesc(customerId);
+            return ResponseEntity.ok(transactions);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Lỗi tải lịch sử: " + e.getMessage());
         }
     }
 
-    // ============================================================
-    // 3. API CỘNG ĐIỂM (FULL OPTION: KM + Audit + Tier + Check Fraud)
-    // ============================================================
+    // --- 3. THANH TOÁN, TÍCH ĐIỂM & ĐÓNG VOUCHER ---
     @PostMapping("/add-points")
     public ResponseEntity<?> addPoints(
             @RequestParam Long customerId,
-            @RequestParam Double amount) {
+            @RequestParam Double amount,
+            @RequestParam(required = false) Long redemptionId) {
         try {
-            // A. Lấy User đang thao tác (để ghi log và check gian lận)
             String currentUsername = "Hệ thống";
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
                 currentUsername = auth.getName();
             }
 
-            // B. Tìm khách hàng
             Customer customer = customerRepository.findById(customerId)
                     .orElseThrow(() -> new RuntimeException("Khách hàng không tồn tại!"));
 
-            // --- C. GỌI HÀM CHECK GIAN LẬN NGAY TẠI ĐÂY ---
             checkFraud(currentUsername, customerId, amount, customer.getName());
-            // ----------------------------------------------
 
-            // D. Tính điểm gốc (10.000đ = 1 điểm)
-            int basePoints = (int) (amount / 10000);
+            Double finalAmount = amount;
+            Double discountAmount = 0.0;
+            String rewardName = "";
 
-            // E. Kiểm tra khuyến mãi
-            double multiplier = 1.0; 
-            String promoName = "";
-            List<Promotion> activePromotions = promotionRepository.findActivePromotions(LocalDate.now());
+            // XỬ LÝ VOUCHER
+            if (redemptionId != null) {
+                Redemption redemption = redemptionRepository.findById(redemptionId)
+                        .orElseThrow(() -> new RuntimeException("Không tìm thấy Voucher!"));
 
-            if (!activePromotions.isEmpty()) {
-                Promotion promo = activePromotions.get(0);
-                multiplier = promo.getMultiplier();
-                promoName = promo.getName();
+                if (!"UNUSED".equals(redemption.getStatus())) {
+                    return ResponseEntity.badRequest().body("Voucher đã sử dụng hoặc hết hạn!");
+                }
+
+                Reward reward = redemption.getReward();
+                rewardName = reward.getName();
+                
+                if ("VOUCHER".equalsIgnoreCase(reward.getType()) && reward.getDiscountValue() != null) {
+                    discountAmount = reward.getDiscountValue();
+                    finalAmount = Math.max(0, amount - discountAmount);
+                }
+
+                redemption.setStatus("USED");
+                redemptionRepository.save(redemption);
+
+                // Thông báo dùng quà
+                saveNotification(customerId, "Sử dụng ưu đãi thành công", 
+                    "Bạn đã dùng Voucher: " + rewardName + " cho hóa đơn này.", "REDEEM");
             }
 
-            // F. Tính điểm thực nhận
-            int finalPoints = (int) (basePoints * multiplier);
+            // LOGIC TÍCH ĐIỂM (10.000đ = 1đ)
+            int basePoints = (int) (amount / 10000);
+            double multiplier = 1.0;
+            List<Promotion> activePromos = promotionRepository.findActivePromotions(LocalDate.now());
+            if (!activePromos.isEmpty()) {
+                multiplier = activePromos.get(0).getMultiplier();
+            }
+            int earnedPoints = (int) (basePoints * multiplier);
 
-            // G. Lưu giao dịch
+            // LƯU GIAO DỊCH
             Transaction transaction = new Transaction();
             transaction.setCustomer(customer);
             transaction.setTotalAmount(amount);
-            transaction.setPointsEarned(finalPoints);
+            transaction.setDiscountAmount(discountAmount);
+            transaction.setFinalAmount(finalAmount);
+            transaction.setPointsEarned(earnedPoints);
             transaction.setPointsUsed(0);
-            transaction.setType("EARN"); // Đánh dấu là giao dịch tích điểm
             transaction.setTransactionDate(LocalDateTime.now());
+            transaction.setType(redemptionId != null ? "REDEEM_AND_EARN" : "EARN");
             transactionRepository.save(transaction);
 
-            // H. Cập nhật ví điểm khách hàng
-            int newBalance = customer.getPointBalance() + finalPoints;
+            // CẬP NHẬT VÍ ĐIỂM & HẠNG
+            int newBalance = customer.getPointBalance() + earnedPoints;
             customer.setPointBalance(newBalance);
-
-            // I. CẬP NHẬT HẠNG ĐỘNG
-            List<Tier> tiers = tierRepository.findAll(Sort.by(Sort.Direction.DESC, "minPoint"));
-            String newTierName = "Mới";
-            for (Tier tier : tiers) {
-                if (newBalance >= tier.getMinPoint()) {
-                    newTierName = tier.getName();
-                    break; 
-                }
-            }
-            
-            boolean tierChanged = !newTierName.equals(customer.getTier());
-            if (tierChanged) {
-                customer.setTier(newTierName);
-            }
+            updateCustomerTier(customer, newBalance);
             customerRepository.save(customer);
 
-            // K. Ghi Log hệ thống
-            String logDetails = "KH: " + customer.getName() + 
-                              " | Bill: " + String.format("%,.0f", amount) + "đ" +
-                              " | Điểm: +" + finalPoints;
+            // THÔNG BÁO & LOG
+            saveNotification(customerId, "Tích điểm thành công", 
+                "Nhận +" + earnedPoints + " điểm từ hóa đơn " + String.format("%,.0f", amount) + "đ.", "TRANSACTION");
             
-            if (multiplier > 1.0) {
-                logDetails += " (KM: " + promoName + " x" + multiplier + ")";
-            }
+            auditLogService.saveLog(currentUsername, "GIAO DỊCH POS", 
+                "KH: " + customer.getName() + " | Bill: " + amount + " | Thu: " + finalAmount);
 
-            if (tierChanged) {
-                logDetails += " | Thăng hạng: " + newTierName;
-            }
-
-            auditLogService.saveLog(currentUsername, "TÍCH ĐIỂM", logDetails);
-
-            return ResponseEntity.ok("Thành công! Điểm mới: " + newBalance + " (Hạng: " + newTierName + ")");
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("finalAmount", finalAmount);
+            resp.put("pointsEarned", earnedPoints);
+            resp.put("newBalance", newBalance);
+            return ResponseEntity.ok(resp);
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.badRequest().body("Lỗi Server: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Lỗi xử lý: " + e.getMessage());
         }
+    }
+
+    // --- HÀM HỖ TRỢ ---
+    private void checkFraud(String user, Long id, double amt, String name) {
+        LocalTime now = LocalTime.now();
+        if (now.isAfter(LocalTime.of(22, 0)) || now.isBefore(LocalTime.of(8, 0))) {
+            auditLogService.saveLog("CẢNH BÁO", "GIỜ GIẤC", "Giao dịch ngoài giờ: " + user);
+        }
+        if (amt > 10000000) {
+            auditLogService.saveLog("CẢNH BÁO", "GIÁ TRỊ", "Bill lớn: " + amt + "đ - KH: " + name);
+        }
+    }
+
+    private void updateCustomerTier(Customer customer, int points) {
+        List<Tier> tiers = tierRepository.findAll(Sort.by(Sort.Direction.DESC, "minPoint"));
+        for (Tier tier : tiers) {
+            if (points >= tier.getMinPoint()) {
+                customer.setTier(tier.getName());
+                break;
+            }
+        }
+    }
+
+    private void saveNotification(Long custId, String title, String msg, String type) {
+        Notification n = new Notification();
+        n.setUserId(custId);
+        n.setTitle(title);
+        n.setMessage(msg);
+        n.setType(type);
+        notificationRepository.save(n);
     }
 }
