@@ -10,38 +10,27 @@ const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-   const onFinish = async (values) => {
+    const onFinish = async (values) => {
         setLoading(true);
         try {
             const response = await axiosClient.post('/auth/login', values);
-            
-            // --- IN RA MÀN HÌNH CONSOLE ĐỂ KIỂM TRA ---
             console.log("DỮ LIỆU BACKEND TRẢ VỀ:", response); 
 
-            // Kiểm tra xem dữ liệu nằm ở 'response' hay 'response.data'
-            // Một số cấu hình axios sẽ trả về trực tiếp data, một số trả về full response
             const data = response.data ? response.data : response;
 
             if (!data || !data.role) {
                 message.error("Lỗi: Backend không trả về Role!");
-                console.error("Thiếu role trong data:", data);
                 return;
             }
 
             message.success('Đăng nhập thành công!');
-            
-            // Lưu vào localStorage
-            localStorage.setItem('access_token', data.token || ''); // Lưu token nếu có
+            localStorage.setItem('access_token', data.token || '');
             localStorage.setItem('user_info', JSON.stringify(data));
 
-            // --- PHÂN LUỒNG ---
-            // Thêm độ trễ nhỏ 0.5s để đảm bảo localStorage kịp lưu
             setTimeout(() => {
                 if (data.role === 'ADMIN') {
-                    console.log("Đang chuyển hướng đến Dashboard...");
                     navigate('/dashboard'); 
                 } else if (data.role === 'STAFF') {
-                    console.log("Đang chuyển hướng đến Khách hàng...");
                     navigate('/customers'); 
                 } else {
                     message.warning("Tài khoản không có quyền truy cập!");
@@ -50,7 +39,7 @@ const LoginPage = () => {
 
         } catch (error) {
             console.error("Lỗi đăng nhập:", error);
-            message.error('Đăng nhập thất bại!');
+            message.error('Sai tên đăng nhập hoặc mật khẩu!');
         } finally {
             setLoading(false);
         }
@@ -75,6 +64,11 @@ const LoginPage = () => {
                     onFinish={onFinish}
                     layout="vertical"
                     size="large"
+                    // --- ĐÂY LÀ PHẦN THÊM VÀO ĐỂ GÁN TÀI KHOẢN CỨNG ---
+                    initialValues={{
+                        username: 'admin',
+                        password: 'admin123'
+                    }}
                 >
                     <Form.Item
                         name="username"
@@ -95,6 +89,13 @@ const LoginPage = () => {
                             Đăng nhập
                         </Button>
                     </Form.Item>
+
+                    {/* Thêm ghi chú cho giáo viên */}
+                    <div style={{ textAlign: 'center', marginTop: 10 }}>
+                        <Text type="secondary" italic size="small">
+                            * Tài khoản test đã được điền sẵn
+                        </Text>
+                    </div>
                 </Form>
             </Card>
         </div>
