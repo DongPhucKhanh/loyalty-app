@@ -1,6 +1,7 @@
 package com.doan.loyaltyapp.controller;
 
 import com.doan.loyaltyapp.model.*;
+import com.doan.loyaltyapp.model.dto.TransactionRequest;
 import com.doan.loyaltyapp.repository.*;
 import com.doan.loyaltyapp.service.AuditLogService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -103,14 +104,32 @@ public class TransactionController {
                     "Bạn đã dùng Voucher: " + rewardName + " cho hóa đơn này.", "REDEEM");
             }
 
-            // LOGIC TÍCH ĐIỂM (10.000đ = 1đ)
-            int basePoints = (int) (amount / 10000);
-            double multiplier = 1.0;
-            List<Promotion> activePromos = promotionRepository.findActivePromotions(LocalDate.now());
-            if (!activePromos.isEmpty()) {
-                multiplier = activePromos.get(0).getMultiplier();
-            }
-            int earnedPoints = (int) (basePoints * multiplier);
+            // // LOGIC TÍCH ĐIỂM (10.000đ = 1đ)
+            // int basePoints = (int) (amount / 10000);
+            // double multiplier = 1.0;
+            // List<Promotion> activePromos = promotionRepository.findActivePromotions(LocalDate.now());
+            // if (!activePromos.isEmpty()) {
+            //     multiplier = activePromos.get(0).getMultiplier();
+            // }
+            // int earnedPoints = (int) (basePoints * multiplier);
+            // 1. LOGIC TÍCH ĐIỂM MỚI (1% Doanh thu)
+// Ví dụ: 100.000đ * 0.01 = 1.000 điểm
+int basePoints = (int) (amount * 0.01); 
+
+// 2. KIỂM TRA KHUYẾN MÃI (X2, X3 điểm)
+double multiplier = 1.0;
+List<Promotion> activePromos = promotionRepository.findActivePromotions(LocalDate.now());
+
+if (!activePromos.isEmpty()) {
+    // Lấy hệ số nhân của chương trình khuyến mãi đầu tiên đang hoạt động
+    multiplier = activePromos.get(0).getMultiplier();
+}
+
+// 3. TÍNH ĐIỂM CUỐI CÙNG
+// Ví dụ: Nếu có khuyến mãi X2, khách nhận được: 1.000 * 2 = 2.000 điểm
+int earnedPoints = (int) (basePoints * multiplier);
+
+System.out.println(">>> Số tiền: " + amount + " | Điểm cơ bản: " + basePoints + " | Tổng điểm nhận: " + earnedPoints);
 
             // LƯU GIAO DỊCH
             Transaction transaction = new Transaction();
@@ -177,4 +196,10 @@ public class TransactionController {
         n.setType(type);
         notificationRepository.save(n);
     }
+    // Endpoint mới để khớp với StaffScanner.jsx và TransactionRequest DTO
+@PostMapping("/add")
+public ResponseEntity<?> addFromScanner(@RequestBody TransactionRequest request) {
+    // Chuyển hướng dữ liệu từ JSON sang hàm xử lý tích điểm hiện tại của bạn
+    return addPoints(request.getCustomerId(), request.getAmount(), null);
+}
 }
