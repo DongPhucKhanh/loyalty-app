@@ -7,12 +7,11 @@ const ChatAIWidget = () => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [messages, setMessages] = useState([
-        { text: "Xin chào! Em là trợ lý ảo của DongPhucKhanh. Anh/Chị cần em hỗ trợ gì về điểm thưởng và quà tặng không ạ?", isAi: true }
+        { text: "Xin chào! Em là trợ lý ảo của DongPhucKhanh. Anh/Chị cần em hỗ trợ gì về điểm thưởng không ạ?", isAi: true }
     ]);
     
     const scrollRef = useRef(null);
 
-    // Tự động cuộn xuống tin nhắn mới nhất
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -20,35 +19,32 @@ const ChatAIWidget = () => {
     }, [messages]);
 
     const handleSendMessage = async () => {
-        if (!input.trim()) return;
+    if (!input.trim()) return;
 
-        const userMsg = { text: input, isAi: false };
-        setMessages(prev => [...prev, userMsg]);
-        setInput('');
-        setLoading(true);
+    const userStr = localStorage.getItem('user_info');
+    const customerId = userStr ? JSON.parse(userStr).id : null;
 
-        try {
-            // Lấy ID khách hàng từ LocalStorage để AI biết khách hàng là ai
-            const userStr = localStorage.getItem('user_info');
-            const customerId = userStr ? JSON.parse(userStr).id : null;
+    setMessages(prev => [...prev, { text: input, isAi: false }]);
+    setInput('');
+    setLoading(true);
 
-            // Gọi API Backend đã viết ở bước trước
-            const response = await axiosClient.post(`/chat/ask?customerId=${customerId}`, {
-                message: input
-            });
+    try {
+        // Gửi cả message và customerId trong BODY
+        const response = await axiosClient.post('/chat/ask', {
+            message: input,
+            customerId: customerId 
+        });
 
-            const aiMsg = { text: response, isAi: true }; // Giả sử API trả về chuỗi trực tiếp
-            setMessages(prev => [...prev, aiMsg]);
-        } catch (error) {
-            setMessages(prev => [...prev, { text: "Dạ, hệ thống đang bận, Anh/Chị thử lại sau nhé!", isAi: true }]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
+        setMessages(prev => [...prev, { text: response, isAi: true }]);
+    } catch (error) {
+        setMessages(prev => [...prev, { text: "Hệ thống bận, thử lại sau nhé!", isAi: true }]);
+    } finally {
+        setLoading(false);
+    }
+};
     return (
         <div className="fixed bottom-24 right-6 z-50 font-sans">
-            {/* 1. Nút bong bóng chat */}
+            {/* Nút bong bóng chat */}
             {!isOpen && (
                 <button 
                     onClick={() => setIsOpen(true)}
@@ -58,26 +54,20 @@ const ChatAIWidget = () => {
                 </button>
             )}
 
-            {/* 2. Cửa sổ chat */}
+            {/* Cửa sổ chat */}
             {isOpen && (
                 <div className="bg-white w-[350px] h-[500px] shadow-2xl rounded-3xl flex flex-col border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-300">
-                    {/* Header */}
                     <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-4 text-white flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                            <div className="bg-white/20 p-1.5 rounded-lg">
-                                <Bot size={20} />
-                            </div>
+                            <div className="bg-white/20 p-1.5 rounded-lg"><Bot size={20} /></div>
                             <div>
-                                <h4 className="text-sm font-bold">Hỗ trợ khách hàng AI</h4>
-                                <p className="text-[10px] opacity-80">Trực tuyến 24/7</p>
+                                <h4 className="text-sm font-bold">Trợ lý DongPhucKhanh AI</h4>
+                                <p className="text-[10px] opacity-80">Hỗ trợ 1% tích điểm 24/7</p>
                             </div>
                         </div>
-                        <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded-full">
-                            <X size={20} />
-                        </button>
+                        <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={20} /></button>
                     </div>
 
-                    {/* Nội dung chat */}
                     <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50">
                         {messages.map((m, i) => (
                             <div key={i} className={`flex ${m.isAi ? 'justify-start' : 'justify-end'}`}>
@@ -100,11 +90,10 @@ const ChatAIWidget = () => {
                         )}
                     </div>
 
-                    {/* Ô nhập tin nhắn */}
                     <div className="p-4 bg-white border-t flex gap-2 items-center">
                         <input 
                             className="flex-1 bg-gray-100 border-none outline-none px-4 py-2.5 rounded-full text-xs"
-                            placeholder="Nhập câu hỏi của bạn..."
+                            placeholder="Hỏi em về điểm thưởng..."
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
