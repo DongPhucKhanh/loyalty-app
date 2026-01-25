@@ -38,18 +38,16 @@ public class TransactionController {
     @Autowired
     private AuditLogService auditLogService;
 
-    // --- 1. LẤY TẤT CẢ GIAO DỊCH (Dành cho Admin/Staff) ---
+    // --- 1. LẤY TẤT CẢ GIAO DỊCH ---
     @GetMapping
     public List<Transaction> getAllTransactions() {
         return transactionRepository.findAll(Sort.by(Sort.Direction.DESC, "transactionDate"));
     }
 
-    // --- 2. 🔥 FIX LỖI 403: LẤY LỊCH SỬ GIAO DỊCH THEO KHÁCH HÀNG ---
-    // Phương thức này xử lý yêu cầu: GET /api/transactions/customer/{id}
+    // --- 2. LẤY LỊCH SỬ GIAO DỊCH THEO KHÁCH HÀNG ---
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<?> getTransactionsByCustomer(@PathVariable Long customerId) {
         try {
-            // Gọi hàm từ Repository (Cần cập nhật Repository ở bước 2 bên dưới)
             List<Transaction> transactions = transactionRepository.findByCustomerIdOrderByTransactionDateDesc(customerId);
             return ResponseEntity.ok(transactions);
         } catch (Exception e) {
@@ -57,13 +55,23 @@ public class TransactionController {
         }
     }
 
-    // --- 3. THANH TOÁN, TÍCH ĐIỂM & ĐÓNG VOUCHER ---
+    // --- 3. API TÍCH ĐIỂM CHÍNH (LOGIC 1% & CHẶN SỐ ÂM) ---
     @PostMapping("/add-points")
     public ResponseEntity<?> addPoints(
             @RequestParam Long customerId,
             @RequestParam Double amount,
             @RequestParam(required = false) Long redemptionId) {
         try {
+            // ---------------------------------------------------------
+            // 🛑 BƯỚC 1: VALIDATION (CHẶN SỐ ÂM)
+            // Nếu nhập -50000, code sẽ chạy vào đây và return lỗi ngay.
+            // Không thực hiện tính toán ở dưới.
+            // ---------------------------------------------------------
+            if (amount == null || amount <= 0) {
+                return ResponseEntity.badRequest().body("Số tiền giao dịch không hợp lệ (Phải lớn hơn 0)!");
+            }
+
+            // Lấy thông tin người thực hiện
             String currentUsername = "Hệ thống";
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
@@ -79,7 +87,7 @@ public class TransactionController {
             Double discountAmount = 0.0;
             String rewardName = "";
 
-            // XỬ LÝ VOUCHER
+            // --- XỬ LÝ VOUCHER (NẾU CÓ) ---
             if (redemptionId != null) {
                 Redemption redemption = redemptionRepository.findById(redemptionId)
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy Voucher!"));
@@ -99,39 +107,27 @@ public class TransactionController {
                 redemption.setStatus("USED");
                 redemptionRepository.save(redemption);
 
-                // Thông báo dùng quà
                 saveNotification(customerId, "Sử dụng ưu đãi thành công", 
                     "Bạn đã dùng Voucher: " + rewardName + " cho hóa đơn này.", "REDEEM");
             }
 
-            // // LOGIC TÍCH ĐIỂM (10.000đ = 1đ)
-            // int basePoints = (int) (amount / 10000);
-            // double multiplier = 1.0;
-            // List<Promotion> activePromos = promotionRepository.findActivePromotions(LocalDate.now());
-            // if (!activePromos.isEmpty()) {
-            //     multiplier = activePromos.get(0).getMultiplier();
-            // }
-            // int earnedPoints = (int) (basePoints * multiplier);
-            // 1. LOGIC TÍCH ĐIỂM MỚI (1% Doanh thu)
-// Ví dụ: 100.000đ * 0.01 = 1.000 điểm
-int basePoints = (int) (amount * 0.01); 
+            // ---------------------------------------------------------
+            // ✅ BƯỚC 2: TÍNH ĐIỂM (1% DOANH THU)
+            // Code chỉ chạy đến đây nếu BƯỚC 1 đã qua (số tiền dương).
+            // ---------------------------------------------------------
+            int basePoints = (int) (amount * 0.01); 
 
-// 2. KIỂM TRA KHUYẾN MÃI (X2, X3 điểm)
-double multiplier = 1.0;
-List<Promotion> activePromos = promotionRepository.findActivePromotions(LocalDate.now());
+            // Kiểm tra khuyến mãi (X2, X3...)
+            double multiplier = 1.0;
+            List<Promotion> activePromos = promotionRepository.findActivePromotions(LocalDate.now());
+            if (!activePromos.isEmpty()) {
+                multiplier = activePromos.get(0).getMultiplier();
+            }
 
-if (!activePromos.isEmpty()) {
-    // Lấy hệ số nhân của chương trình khuyến mãi đầu tiên đang hoạt động
-    multiplier = activePromos.get(0).getMultiplier();
-}
+            // Tổng điểm cuối cùng
+            int earnedPoints = (int) (basePoints * multiplier);
 
-// 3. TÍNH ĐIỂM CUỐI CÙNG
-// Ví dụ: Nếu có khuyến mãi X2, khách nhận được: 1.000 * 2 = 2.000 điểm
-int earnedPoints = (int) (basePoints * multiplier);
-
-System.out.println(">>> Số tiền: " + amount + " | Điểm cơ bản: " + basePoints + " | Tổng điểm nhận: " + earnedPoints);
-
-            // LƯU GIAO DỊCH
+            // --- LƯU VÀO DB ---
             Transaction transaction = new Transaction();
             transaction.setCustomer(customer);
             transaction.setTotalAmount(amount);
@@ -143,13 +139,13 @@ System.out.println(">>> Số tiền: " + amount + " | Điểm cơ bản: " + bas
             transaction.setType(redemptionId != null ? "REDEEM_AND_EARN" : "EARN");
             transactionRepository.save(transaction);
 
-            // CẬP NHẬT VÍ ĐIỂM & HẠNG
+            // Cập nhật ví điểm & hạng
             int newBalance = customer.getPointBalance() + earnedPoints;
             customer.setPointBalance(newBalance);
             updateCustomerTier(customer, newBalance);
             customerRepository.save(customer);
 
-            // THÔNG BÁO & LOG
+            // Thông báo
             saveNotification(customerId, "Tích điểm thành công", 
                 "Nhận +" + earnedPoints + " điểm từ hóa đơn " + String.format("%,.0f", amount) + "đ.", "TRANSACTION");
             
@@ -167,7 +163,14 @@ System.out.println(">>> Số tiền: " + amount + " | Điểm cơ bản: " + bas
         }
     }
 
-    // --- HÀM HỖ TRỢ ---
+    // --- 4. HỖ TRỢ JSON (Đã sửa để dùng được RedemptionId từ DTO) ---
+  @PostMapping("/add")
+public ResponseEntity<?> addFromScanner(@RequestBody TransactionRequest request) {
+    // Chuyển hướng dữ liệu từ JSON sang hàm xử lý tích điểm hiện tại của bạn
+    return addPoints(request.getCustomerId(), request.getAmount(), null);
+}
+
+    // --- PRIVATE HELPERS ---
     private void checkFraud(String user, Long id, double amt, String name) {
         LocalTime now = LocalTime.now();
         if (now.isAfter(LocalTime.of(22, 0)) || now.isBefore(LocalTime.of(8, 0))) {
@@ -194,12 +197,7 @@ System.out.println(">>> Số tiền: " + amount + " | Điểm cơ bản: " + bas
         n.setTitle(title);
         n.setMessage(msg);
         n.setType(type);
+        n.setCreatedAt(LocalDateTime.now());
         notificationRepository.save(n);
     }
-    // Endpoint mới để khớp với StaffScanner.jsx và TransactionRequest DTO
-@PostMapping("/add")
-public ResponseEntity<?> addFromScanner(@RequestBody TransactionRequest request) {
-    // Chuyển hướng dữ liệu từ JSON sang hàm xử lý tích điểm hiện tại của bạn
-    return addPoints(request.getCustomerId(), request.getAmount(), null);
-}
 }
