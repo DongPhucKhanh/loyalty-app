@@ -1,112 +1,151 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Send, X, Bot, User, Loader2 } from 'lucide-react';
-import axiosClient from '../api/axiosClient';
+import React, { useState, useRef, useEffect } from 'react';
+import { Button, Input, Card, Avatar, Space } from 'antd';
+import { MessageOutlined, SendOutlined, RobotOutlined, UserOutlined, CloseOutlined } from '@ant-design/icons';
+import axiosClient from '../api/axiosClient'; // Đảm bảo đường dẫn import axios đúng với dự án của bạn
 
 const ChatAIWidget = () => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [input, setInput] = useState('');
+    // --- STATE QUẢN LÝ ---
+    const [isOpen, setIsOpen] = useState(false); // Mở/Đóng khung chat
+    const [inputValue, setInputValue] = useState('');
     const [loading, setLoading] = useState(false);
     const [messages, setMessages] = useState([
-        { text: "Xin chào! Em là trợ lý ảo của DongPhucKhanh. Anh/Chị cần em hỗ trợ gì về điểm thưởng không ạ?", isAi: true }
+        { 
+            id: 1, 
+            text: 'Xin chào! Mình là Trợ lý AI Loyalty. Mình có thể giúp bạn tra cứu điểm, hạng thành viên và gợi ý đổi quà. Bạn cần giúp gì không?', 
+            sender: 'bot' 
+        }
     ]);
     
-    const scrollRef = useRef(null);
+    // Ref để tự động cuộn xuống tin nhắn cuối
+    const messagesEndRef = useRef(null);
+
+    // --- LẤY ID USER TỪ LOCAL STORAGE (Quan trọng) ---
+    // Giả sử khi Login bạn lưu: localStorage.setItem('user', JSON.stringify(data));
+    const userString = localStorage.getItem('user');
+    const user = userString ? JSON.parse(userString) : null;
+    // Nếu chưa đăng nhập, customerId sẽ là null (Backend đã xử lý được trường hợp này rồi)
+    const customerId = user ? user.id : null; 
+
+    // Hàm cuộn xuống cuối
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
 
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        if (isOpen) scrollToBottom();
+    }, [messages, isOpen]);
+
+    // --- XỬ LÝ GỬI TIN NHẮN ---
+    const handleSend = async () => {
+        if (!inputValue.trim()) return;
+
+        // 1. Hiện tin nhắn người dùng ngay lập tức (cho mượt)
+        const userMsg = { id: Date.now(), text: inputValue, sender: 'user' };
+        setMessages(prev => [...prev, userMsg]);
+        setInputValue('');
+        setLoading(true);
+
+        try {
+            // 2. Gọi API Backend (Controller bạn vừa sửa)
+            const res = await axiosClient.post('/chat/ask', {
+                message: userMsg.text,
+                customerId: customerId // Gửi ID xuống để AI biết ai đang hỏi
+            });
+
+            // 3. Hiện câu trả lời từ Gemini
+            const botMsg = { id: Date.now() + 1, text: res.response, sender: 'bot' };
+            setMessages(prev => [...prev, botMsg]);
+
+        } catch (error) {
+            console.error("Chat Error:", error);
+            const errorMsg = { id: Date.now() + 1, text: 'Hệ thống đang bận, vui lòng thử lại sau!', sender: 'bot' };
+            setMessages(prev => [...prev, errorMsg]);
+        } finally {
+            setLoading(false);
         }
-    }, [messages]);
+    };
 
-    const handleSendMessage = async () => {
-    if (!input.trim()) return;
-
-    const userStr = localStorage.getItem('user_info');
-    const customerId = userStr ? JSON.parse(userStr).id : null;
-
-    setMessages(prev => [...prev, { text: input, isAi: false }]);
-    setInput('');
-    setLoading(true);
-
-    try {
-        // Gửi cả message và customerId trong BODY
-        const response = await axiosClient.post('/chat/ask', {
-            message: input,
-            customerId: customerId 
-        });
-
-        setMessages(prev => [...prev, { text: response, isAi: true }]);
-    } catch (error) {
-        setMessages(prev => [...prev, { text: "Hệ thống bận, thử lại sau nhé!", isAi: true }]);
-    } finally {
-        setLoading(false);
-    }
-};
     return (
-        <div className="fixed bottom-24 right-6 z-50 font-sans">
-            {/* Nút bong bóng chat */}
+        <div style={{ position: 'fixed', bottom: 30, right: 30, zIndex: 9999 }}>
+            {/* NÚT TRÒN MỞ CHAT */}
             {!isOpen && (
-                <button 
+                <Button 
+                    type="primary" 
+                    shape="circle" 
+                    icon={<MessageOutlined style={{ fontSize: 24 }} />} 
+                    size="large"
+                    style={{ width: 60, height: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     onClick={() => setIsOpen(true)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-2xl transition-all active:scale-90 flex items-center justify-center"
-                >
-                    <MessageCircle size={28} />
-                </button>
+                />
             )}
 
-            {/* Cửa sổ chat */}
+            {/* CỬA SỔ CHAT */}
             {isOpen && (
-                <div className="bg-white w-[350px] h-[500px] shadow-2xl rounded-3xl flex flex-col border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-300">
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-4 text-white flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                            <div className="bg-white/20 p-1.5 rounded-lg"><Bot size={20} /></div>
-                            <div>
-                                <h4 className="text-sm font-bold">Trợ lý DongPhucKhanh AI</h4>
-                                <p className="text-[10px] opacity-80">Hỗ trợ 1% tích điểm 24/7</p>
-                            </div>
-                        </div>
-                        <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={20} /></button>
-                    </div>
-
-                    <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50">
-                        {messages.map((m, i) => (
-                            <div key={i} className={`flex ${m.isAi ? 'justify-start' : 'justify-end'}`}>
-                                <div className={`flex gap-2 max-w-[80%] ${m.isAi ? 'flex-row' : 'flex-row-reverse'}`}>
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${m.isAi ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}>
-                                        {m.isAi ? <Bot size={16} /> : <User size={16} />}
-                                    </div>
-                                    <div className={`p-3 rounded-2xl text-xs shadow-sm ${m.isAi ? 'bg-white text-gray-700 rounded-tl-none' : 'bg-blue-600 text-white rounded-tr-none'}`}>
-                                        {m.text}
-                                    </div>
+                <Card 
+                    style={{ width: 360, height: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', borderRadius: 16 }}
+                    // Sửa lỗi bodyStyle deprecated: Dùng styles.body
+                    styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', height: '100%' } }}
+                    title={<Space><RobotOutlined style={{ color: '#1890ff' }} /> <span style={{ fontWeight: 600 }}>Trợ lý AI Loyalty</span></Space>}
+                    extra={<Button type="text" icon={<CloseOutlined />} onClick={() => setIsOpen(false)} />}
+                >
+                    {/* VÙNG HIỂN THỊ TIN NHẮN */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: 16, background: '#f5f7fa' }}>
+                        {/* Dùng map thay vì List để tránh warning deprecated */}
+                        {messages.map((item) => (
+                             <div key={item.id} style={{ 
+                                display: 'flex', 
+                                justifyContent: item.sender === 'user' ? 'flex-end' : 'flex-start',
+                                marginBottom: 12
+                            }}>
+                                {item.sender === 'bot' && (
+                                    <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#fff', color: '#1890ff', marginRight: 8, border: '1px solid #d9d9d9' }} />
+                                )}
+                                
+                                <div style={{
+                                    maxWidth: '75%',
+                                    padding: '10px 14px',
+                                    borderRadius: 16,
+                                    borderTopLeftRadius: item.sender === 'bot' ? 4 : 16,
+                                    borderTopRightRadius: item.sender === 'user' ? 4 : 16,
+                                    background: item.sender === 'user' ? '#1890ff' : '#fff',
+                                    color: item.sender === 'user' ? '#fff' : '#333',
+                                    boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                                    whiteSpace: 'pre-wrap', // Giữ định dạng xuống dòng
+                                    fontSize: 14,
+                                    lineHeight: 1.5
+                                }}>
+                                    {item.text}
                                 </div>
+                                
+                                {item.sender === 'user' && (
+                                    <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#87d068', marginLeft: 8 }} />
+                                )}
                             </div>
                         ))}
+                        
                         {loading && (
-                            <div className="flex justify-start">
-                                <div className="bg-white p-3 rounded-2xl shadow-sm">
-                                    <Loader2 size={16} className="animate-spin text-blue-600" />
-                                </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 40, marginBottom: 10 }}>
+                                <div style={{ width: 6, height: 6, background: '#999', borderRadius: '50%', animation: 'bounce 1s infinite' }}></div>
+                                <div style={{ width: 6, height: 6, background: '#999', borderRadius: '50%', animation: 'bounce 1s infinite 0.2s' }}></div>
+                                <div style={{ width: 6, height: 6, background: '#999', borderRadius: '50%', animation: 'bounce 1s infinite 0.4s' }}></div>
                             </div>
                         )}
+                        <div ref={messagesEndRef} />
                     </div>
 
-                    <div className="p-4 bg-white border-t flex gap-2 items-center">
-                        <input 
-                            className="flex-1 bg-gray-100 border-none outline-none px-4 py-2.5 rounded-full text-xs"
-                            placeholder="Hỏi em về điểm thưởng..."
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    {/* VÙNG NHẬP LIỆU */}
+                    <div style={{ padding: 12, borderTop: '1px solid #f0f0f0', display: 'flex', gap: 8, background: '#fff', borderBottomLeftRadius: 16, borderBottomRightRadius: 16 }}>
+                        <Input 
+                            placeholder="Nhập câu hỏi...." 
+                            value={inputValue}
+                            onChange={e => setInputValue(e.target.value)}
+                            onPressEnter={handleSend}
+                            disabled={loading}
+                            style={{ borderRadius: 20 }}
                         />
-                        <button 
-                            disabled={loading || !input.trim()}
-                            onClick={handleSendMessage}
-                            className="bg-blue-600 text-white p-2.5 rounded-full disabled:opacity-50"
-                        >
-                            <Send size={18} />
-                        </button>
+                        <Button type="primary" shape="circle" icon={<SendOutlined />} onClick={handleSend} loading={loading} />
                     </div>
-                </div>
+                </Card>
             )}
         </div>
     );
