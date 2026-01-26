@@ -61,7 +61,7 @@ const AuditLogPage = () => {
     return (
         <div style={{ padding: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-                <h2><SafetyCertificateOutlined /> Nhật ký hệ thống (Audit Log)</h2>
+                <h2><SafetyCertificateOutlined /> Nhật ký hệ thống</h2>
                 <Button icon={<ReloadOutlined />} onClick={fetchLogs}>Làm mới</Button>
             </div>
 
